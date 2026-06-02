@@ -314,33 +314,39 @@ function EditInterview({ interview }: EditInterviewProps) {
           </div>
         </div>
         <p className="mt-3 mb-1 ml-2 font-medium">Questions</p>
-        <ScrollArea className="flex ml-2 p-2 pr-4 mb-4 flex-col justify-center items-center w-[75%] max-h-[500px] bg-slate-100 rounded-md text-sm mt-3">
-          {questions.map((question, index) => (
-            <QuestionCard
-              key={question.id}
-              questionNumber={index + 1}
-              questionData={question}
-              onDelete={handleDeleteQuestion}
-              onQuestionChange={handleInputChange}
-            />
-          ))}
-          <div ref={endOfListRef} />
-          {questions.length < numQuestions ? (
-            <button
-              type="button"
-              className="border-indigo-600 opacity-75 hover:opacity-100 w-fit text-center rounded-full mx-auto"
-              onClick={handleAddQuestion}
-            >
-              <Plus
-                size={45}
-                strokeWidth={2.2}
-                className="text-indigo-600 text-center cursor-pointer"
+        {interview?.questions?.length === 0 ? (
+          <div className="ml-2 p-3 w-[75%] bg-indigo-50 border border-indigo-200 rounded-md text-sm mt-3 text-indigo-700">
+            This is an <span className="font-semibold">adaptive interview</span> — the AI interviewer generates questions dynamically based on your objective and background. No pre-set questions needed.
+          </div>
+        ) : (
+          <ScrollArea className="flex ml-2 p-2 pr-4 mb-4 flex-col justify-center items-center w-[75%] max-h-[500px] bg-slate-100 rounded-md text-sm mt-3">
+            {questions.map((question, index) => (
+              <QuestionCard
+                key={question.id}
+                questionNumber={index + 1}
+                questionData={question}
+                onDelete={handleDeleteQuestion}
+                onQuestionChange={handleInputChange}
               />
-            </button>
-          ) : (
-            <></>
-          )}
-        </ScrollArea>
+            ))}
+            <div ref={endOfListRef} />
+            {questions.length < numQuestions ? (
+              <button
+                type="button"
+                className="border-indigo-600 opacity-75 hover:opacity-100 w-fit text-center rounded-full mx-auto"
+                onClick={handleAddQuestion}
+              >
+                <Plus
+                  size={45}
+                  strokeWidth={2.2}
+                  className="text-indigo-600 text-center cursor-pointer"
+                />
+              </button>
+            ) : (
+              <></>
+            )}
+          </ScrollArea>
+        )}
       </div>
     </div>
   );

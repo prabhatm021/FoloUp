@@ -116,7 +116,10 @@ function SummaryInfo({ responses, interview }: SummaryProps) {
     };
 
     for (const response of responses) {
-      const sentiment = response.details?.call_analysis?.user_sentiment;
+      // Pipecat sessions: analytics.userSentiment. Legacy VAPI: details.call_analysis.user_sentiment
+      const sentiment =
+        response.analytics?.userSentiment ??
+        response.details?.call_analysis?.user_sentiment;
       if (sentiment === "Positive") {
         sentimentCounter.positive += 1;
       } else if (sentiment === "Negative") {
@@ -125,7 +128,10 @@ function SummaryInfo({ responses, interview }: SummaryProps) {
         sentimentCounter.neutral += 1;
       }
 
-      const callCompletion = response.details?.call_analysis?.call_completion_rating;
+      // Pipecat: analytics.callCompletionRating. Legacy VAPI: details.call_analysis.call_completion_rating
+      const callCompletion =
+        response.analytics?.callCompletionRating ??
+        response.details?.call_analysis?.call_completion_rating;
       if (callCompletion === "Complete") {
         callCompletionCounter.complete += 1;
       } else if (callCompletion === "Incomplete") {
@@ -134,12 +140,15 @@ function SummaryInfo({ responses, interview }: SummaryProps) {
         callCompletionCounter.partial += 1;
       }
 
-      const agentTaskCompletion = response.details?.call_analysis?.agent_task_completion_rating;
+      // Completion count: Pipecat uses callCompletionRating; legacy VAPI uses agent_task_completion_rating
+      const agentTaskCompletion =
+        response.analytics?.callCompletionRating ??
+        response.details?.call_analysis?.agent_task_completion_rating;
       if (agentTaskCompletion === "Complete" || agentTaskCompletion === "Partial") {
         completedCount += 1;
       }
 
-      totalDuration += response.duration;
+      totalDuration += response.duration ?? 0;
       if (Object.values(CandidateStatus).includes(response.candidate_status as CandidateStatus)) {
         statusCounter[response.candidate_status as CandidateStatus]++;
       }

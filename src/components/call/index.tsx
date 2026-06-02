@@ -33,7 +33,6 @@ import { toast } from "sonner";
 import MiniLoader from "../loaders/mini-loader/miniLoader";
 import { Button } from "../ui/button";
 import { Card, CardHeader, CardTitle } from "../ui/card";
-import { TabSwitchWarning, useTabSwitchPrevention } from "./tabSwitchPrevention";
 
 // ── Pipecat server URL ──────────────────────────────────────────────────────
 const PIPECAT_URL = "http://localhost:7860";
@@ -57,7 +56,6 @@ function Call({ interview }: InterviewProps) {
   const [isEnded, setIsEnded] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
   const [callId, setCallId] = useState<string>("");
-  const { tabSwitchCount } = useTabSwitchPrevention();
   const [isFeedbackSubmitted, setIsFeedbackSubmitted] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [interviewerImg, setInterviewerImg] = useState("");
@@ -75,6 +73,10 @@ function Call({ interview }: InterviewProps) {
   const transcriptRef = useRef<TranscriptEntry[]>([]);
   // When true, next onBotTranscript chunk starts a fresh caption (clears old one)
   const botNewTurnRef = useRef(false);
+  // Accumulates only the current bot turn text — used for reliable transcript saving
+  const currentBotTurnRef = useRef("");
+  // Tracks call start time so we can save duration on end
+  const callStartTimeRef = useRef<number>(0);
 
   const lastUserResponseRef = useRef<HTMLDivElement | null>(null);
 
@@ -141,10 +143,14 @@ function Call({ interview }: InterviewProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: run only when isEnded flips
   useEffect(() => {
     if (isEnded && callId) {
+      // Calculate duration in seconds from call start
+      const durationSecs = callStartTimeRef.current
+        ? Math.round((Date.now() - callStartTimeRef.current) / 1000)
+        : 0;
       ResponseService.saveResponse(
         {
           is_ended: true,
-          tab_switch_count: tabSwitchCount,
+          duration: durationSecs,
           details: { transcript: transcriptRef.current },
         },
         callId,
@@ -217,6 +223,7 @@ function Call({ interview }: InterviewProps) {
         callbacks: {
           onConnected: () => {
             console.log("[Pipecat] Transport connected — starting session");
+            callStartTimeRef.current = Date.now();
             setIsCalling(true);
             setIsStarted(true);
             setLoading(false);
@@ -248,22 +255,23 @@ function Call({ interview }: InterviewProps) {
           },
           onBotStartedSpeaking: () => {
             setActiveTurn("agent");
-            // Don't clear yet — keep previous caption visible until new text arrives.
-            // Mark that the next transcript chunk should start a fresh caption.
+            // Reset current turn accumulator so we capture only this turn
+            currentBotTurnRef.current = "";
+            // Mark that the display caption should start fresh on next chunk
             botNewTurnRef.current = true;
           },
           onBotStoppedSpeaking: () => {
             setActiveTurn("user");
-            // Save the completed bot turn to the transcript as a single entry
-            setLastInterviewerResponse((current) => {
-              if (current.trim()) {
-                transcriptRef.current = [
-                  ...transcriptRef.current,
-                  { role: "bot", content: current.trim() },
-                ];
-              }
-              return current;
-            });
+            // Save the completed bot turn using the dedicated ref (not state)
+            // to avoid any React batching / stale-capture issues.
+            const turnText = currentBotTurnRef.current.trim();
+            if (turnText) {
+              transcriptRef.current = [
+                ...transcriptRef.current,
+                { role: "bot", content: turnText },
+              ];
+            }
+            currentBotTurnRef.current = "";
           },
           onUserTranscript: (data: TranscriptData) => {
             if (data.text.trim()) {
@@ -280,16 +288,19 @@ function Call({ interview }: InterviewProps) {
           },
           onBotTranscript: (data: BotLLMTextData) => {
             if (data.text.trim()) {
-              // Accumulate word-by-word into the caption display.
-              // The full turn is saved to transcriptRef in onBotStoppedSpeaking.
+              // Accumulate into the display caption word-by-word
               setLastInterviewerResponse((prev) => {
                 if (botNewTurnRef.current) {
-                  // First chunk of a new bot turn — start fresh
+                  // First chunk of a new bot turn — start fresh in display
                   botNewTurnRef.current = false;
                   return data.text;
                 }
                 return prev ? `${prev} ${data.text}` : data.text;
               });
+              // Also accumulate into the turn ref for reliable transcript saving
+              currentBotTurnRef.current = currentBotTurnRef.current
+                ? `${currentBotTurnRef.current} ${data.text}`
+                : data.text;
             }
           },
         },
@@ -320,7 +331,6 @@ function Call({ interview }: InterviewProps) {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="flex justify-center items-center min-h-screen bg-gray-100">
-      {isStarted && <TabSwitchWarning />}
       <div className="bg-white rounded-md md:w-[80%] w-[90%]">
         <Card className="h-[88vh] rounded-lg border-2 border-b-4 border-r-4 border-black text-xl font-bold transition-all md:block dark:border-white">
           <div>
@@ -382,7 +392,6 @@ function Call({ interview }: InterviewProps) {
                   <p className="font-bold text-sm">
                     {"\n"}Ensure your volume is up and grant microphone access when prompted.
                     Additionally, please make sure you are in a quiet environment.
-                    {"\n\n"}Note: Tab switching will be recorded.
                   </p>
                 </div>
 

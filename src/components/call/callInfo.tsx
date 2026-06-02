@@ -29,12 +29,10 @@ import type { Analytics, CallData } from "@/types/response";
 import { CircularProgress } from "@nextui-org/react";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
 import axios from "axios";
-import { DownloadIcon, RefreshCwIcon, TrashIcon } from "lucide-react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileTextIcon, RefreshCwIcon, TrashIcon } from "lucide-react";
 import { marked } from "marked";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
-import ReactAudioPlayer from "react-audio-player";
 import { toast } from "sonner";
 
 type CallProps = {
@@ -123,6 +121,19 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
     setTranscript(rawTranscript);
   }, [call, name]);
 
+  const downloadTranscript = () => {
+    if (!transcript) return;
+    const blob = new Blob([transcript], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `transcript-${call_id.slice(0, 8)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const onDeleteResponseClick = async () => {
     try {
       const response = await ResponseService.getResponseByCallId(call_id);
@@ -206,6 +217,16 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
                       <RefreshCwIcon size={14} className="mr-1" />
                       Re-analyse
                     </Button>
+                    <Button
+                      variant="outline"
+                      className="border-indigo-300 text-indigo-600 hover:bg-indigo-50 p-2 h-9"
+                      title="Download transcript as text file"
+                      onClick={downloadTranscript}
+                      disabled={!transcript}
+                    >
+                      <FileTextIcon size={14} className="mr-1" />
+                      Transcript
+                    </Button>
                     <Select
                       value={candidateStatus}
                       onValueChange={async (newValue: string) => {
@@ -278,20 +299,6 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
-                  </div>
-                </div>
-                <div className="flex flex-col mt-3">
-                  <p className="font-semibold">Interview Recording</p>
-                  <div className="flex flex-row gap-3 mt-2">
-                    {call?.recording_url && <ReactAudioPlayer src={call?.recording_url} controls />}
-                    <a
-                      className="my-auto"
-                      href={call?.recording_url}
-                      download=""
-                      aria-label="Download"
-                    >
-                      <DownloadIcon size={20} />
-                    </a>
                   </div>
                 </div>
               </div>
