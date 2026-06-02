@@ -21,6 +21,8 @@ export interface InterviewBase {
   questions: Question[];
   description: string;
   response_count: bigint;
+  // Extracted PDF text — passed to the live Pipecat interviewer so it knows your background
+  document_context?: string;
 }
 
 export interface InterviewDetails {

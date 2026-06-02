@@ -1,5 +1,4 @@
 import DetailsPopup from "@/components/dashboard/interview/create-popup/details";
-import QuestionsPopup from "@/components/dashboard/interview/create-popup/questions";
 import LoaderWithLogo from "@/components/loaders/loader-with-logo/loaderWithLogo";
 import type { InterviewBase } from "@/types/interview";
 import React, { useEffect, useState } from "react";
@@ -21,39 +20,24 @@ const CreateEmptyInterviewData = (): InterviewBase => ({
   questions: [],
   description: "",
   response_count: BigInt(0),
+  document_context: "",
 });
 
 function CreateInterviewModal({ open, setOpen }: Props) {
   const [loading, setLoading] = useState(false);
-  const [proceed, setProceed] = useState(false);
   const [interviewData, setInterviewData] = useState<InterviewBase>(CreateEmptyInterviewData());
 
-  // Below for File Upload
+  // File upload state
   const [isUploaded, setIsUploaded] = useState(false);
   const [fileName, setFileName] = useState("");
-
-  // Advance to the questions view only once questions have actually been
-  // populated (either generated or pre-filled as empty slots for manual entry).
-  // Without the questions.length check the effect would fire as soon as
-  // setLoading(true) is called — before the API responds — showing a blank view.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
-  useEffect(() => {
-    if (loading === true && interviewData.questions.length > 0) {
-      setLoading(false);
-      setProceed(true);
-    }
-  }, [interviewData, loading]);
 
   useEffect(() => {
     if (!open) {
       setLoading(false);
-      setProceed(false);
       setInterviewData(CreateEmptyInterviewData());
-      // Below for File Upload
       setIsUploaded(false);
       setFileName("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   return (
@@ -62,20 +46,18 @@ function CreateInterviewModal({ open, setOpen }: Props) {
         <div className="w-[38rem] h-[35.3rem] flex items-center justify-center">
           <LoaderWithLogo />
         </div>
-      ) : !proceed ? (
+      ) : (
         <DetailsPopup
           open={open}
+          setOpen={setOpen}
           setLoading={setLoading}
           interviewData={interviewData}
           setInterviewData={setInterviewData}
-          // Below for File Upload
           isUploaded={isUploaded}
           setIsUploaded={setIsUploaded}
           fileName={fileName}
           setFileName={setFileName}
         />
-      ) : (
-        <QuestionsPopup interviewData={interviewData} setProceed={setProceed} setOpen={setOpen} />
       )}
     </>
   );

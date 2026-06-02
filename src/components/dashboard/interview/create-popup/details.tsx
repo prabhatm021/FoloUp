@@ -5,17 +5,19 @@ import { CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useInterviewers } from "@/contexts/interviewers.context";
-import type { InterviewBase, Question } from "@/types/interview";
+import { useInterviews } from "@/contexts/interviews.context";
+import { LOCAL_ORG_ID, LOCAL_ORG_NAME, LOCAL_USER_ID } from "@/lib/local-user";
+import type { InterviewBase } from "@/types/interview";
 import type { Interviewer } from "@/types/interviewer";
 import axios from "axios";
 import { ChevronLeft, ChevronRight, Info } from "lucide-react";
 import Image from "next/image";
 import React, { useState, useEffect } from "react";
-import { v4 as uuidv4 } from "uuid";
 import FileUpload from "../fileUpload";
 
 interface Props {
   open: boolean;
+  setOpen: (open: boolean) => void;
   setLoading: (loading: boolean) => void;
   interviewData: InterviewBase;
   setInterviewData: (interviewData: InterviewBase) => void;
@@ -27,6 +29,7 @@ interface Props {
 
 function DetailsPopup({
   open,
+  setOpen,
   setLoading,
   interviewData,
   setInterviewData,
@@ -36,7 +39,8 @@ function DetailsPopup({
   setFileName,
 }: Props) {
   const { interviewers } = useInterviewers();
-  const [isClicked, setIsClicked] = useState(false);
+  const { fetchInterviews } = useInterviews();
+
   const [openInterviewerDetails, setOpenInterviewerDetails] = useState(false);
   const [interviewerDetails, setInterviewerDetails] = useState<Interviewer>();
 
@@ -44,98 +48,15 @@ function DetailsPopup({
   const [selectedInterviewer, setSelectedInterviewer] = useState(interviewData.interviewer_id);
   const [objective, setObjective] = useState(interviewData.objective);
   const [isAnonymous, setIsAnonymous] = useState<boolean>(interviewData.is_anonymous);
-  const [numQuestions, setNumQuestions] = useState(
-    interviewData.question_count === 0 ? "" : String(interviewData.question_count),
-  );
   const [duration, setDuration] = useState(interviewData.time_duration);
+  const [uploadedDocumentContext, setUploadedDocumentContext] = useState("");
 
-  // Auto-select the first available interviewer so the buttons are never blocked
-  // by a missed click (single-user local mode — no need to choose manually)
+  // Auto-select first interviewer
   useEffect(() => {
     if (interviewers.length > 0 && selectedInterviewer === BigInt(0)) {
       setSelectedInterviewer(interviewers[0].id);
     }
   }, [interviewers, selectedInterviewer]);
-  const [uploadedDocumentContext, setUploadedDocumentContext] = useState("");
-
-  const slideLeft = (id: string, value: number) => {
-    const slider = document.getElementById(`${id}`);
-    if (slider) {
-      slider.scrollLeft = slider.scrollLeft - value;
-    }
-  };
-
-  const slideRight = (id: string, value: number) => {
-    const slider = document.getElementById(`${id}`);
-    if (slider) {
-      slider.scrollLeft = slider.scrollLeft + value;
-    }
-  };
-
-  const onGenrateQuestions = async () => {
-    setLoading(true);
-
-    try {
-      const data = {
-        name: name.trim(),
-        objective: objective.trim(),
-        number: numQuestions,
-        duration: duration,
-        context: uploadedDocumentContext,
-      };
-
-      const generatedQuestions = (await axios.post("/api/generate-interview-questions", data)) as any;
-      const generatedQuestionsResponse = JSON.parse(generatedQuestions?.data?.response);
-
-      const updatedQuestions = generatedQuestionsResponse.questions.map((question: Question) => ({
-        id: uuidv4(),
-        question: question.question.trim(),
-        follow_up_count: 1,
-      }));
-
-      const updatedInterviewData = {
-        ...interviewData,
-        name: name.trim(),
-        objective: objective.trim(),
-        questions: updatedQuestions,
-        interviewer_id: selectedInterviewer,
-        question_count: Number(numQuestions),
-        time_duration: duration,
-        description: generatedQuestionsResponse.description,
-        is_anonymous: isAnonymous,
-      };
-      setInterviewData(updatedInterviewData);
-    } catch (err) {
-      console.error("Generate questions failed:", err);
-      setLoading(false);
-      setIsClicked(false); // reset so the user can try again
-    }
-  };
-
-  const onManual = () => {
-    setLoading(true);
-
-    // Pre-create all question slots so the user just fills them in — no hidden "+ add" step
-    const count = Math.max(1, Number(numQuestions));
-    const emptyQuestions = Array.from({ length: count }, () => ({
-      id: uuidv4(),
-      question: "",
-      follow_up_count: 1,
-    }));
-
-    const updatedInterviewData = {
-      ...interviewData,
-      name: name.trim(),
-      objective: objective.trim(),
-      questions: emptyQuestions,
-      interviewer_id: selectedInterviewer,
-      question_count: count,
-      time_duration: String(duration),
-      description: "",
-      is_anonymous: isAnonymous,
-    };
-    setInterviewData(updatedInterviewData);
-  };
 
   useEffect(() => {
     if (!open) {
@@ -143,37 +64,90 @@ function DetailsPopup({
       setSelectedInterviewer(BigInt(0));
       setObjective("");
       setIsAnonymous(false);
-      setNumQuestions("");
       setDuration("");
-      setIsClicked(false);
+      setUploadedDocumentContext("");
     }
   }, [open]);
+
+  const slideLeft = (id: string, value: number) => {
+    const slider = document.getElementById(id);
+    if (slider) slider.scrollLeft -= value;
+  };
+
+  const slideRight = (id: string, value: number) => {
+    const slider = document.getElementById(id);
+    if (slider) slider.scrollLeft += value;
+  };
+
+  const isValid = name && objective && duration && String(selectedInterviewer) !== "0";
+
+  const onCreate = async () => {
+    setLoading(true);
+    try {
+      // Auto-derive question pool size from duration (used by adaptive interviewer)
+      const durationNum = Number(duration);
+      const poolSize = Math.max(4, Math.ceil(durationNum / 4));
+
+      const sanitizedInterviewData: any = {
+        ...interviewData,
+        user_id: LOCAL_USER_ID,
+        organization_id: LOCAL_ORG_ID,
+        name: name.trim(),
+        objective: objective.trim(),
+        interviewer_id: String(selectedInterviewer),
+        response_count: "0",
+        question_count: poolSize,
+        time_duration: String(duration),
+        is_anonymous: isAnonymous,
+        description: "",
+        questions: [],           // no pre-set questions — adaptive interviewer decides
+        document_context: uploadedDocumentContext || null,
+        logo_url: "",
+      };
+
+      await axios.post("/api/create-interview", {
+        organizationName: LOCAL_ORG_NAME,
+        interviewData: sanitizedInterviewData,
+      });
+
+      fetchInterviews();
+      setOpen(false);
+    } catch (err) {
+      console.error("Create interview failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <>
       <div className="text-center w-[38rem]">
         <h1 className="text-xl font-semibold">Create an Interview</h1>
         <div className="flex flex-col justify-center items-start mt-4 ml-10 mr-8">
+
+          {/* Interview name */}
           <div className="flex flex-row justify-center items-center">
             <h3 className="text-sm font-medium">Interview Name:</h3>
             <input
               type="text"
               className="border-b-2 focus:outline-none border-gray-500 px-2 w-96 py-0.5 ml-3"
-              placeholder="e.g. Name of the Interview"
+              placeholder="e.g. PM Practice — Prioritisation"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onBlur={(e) => setName(e.target.value.trim())}
             />
           </div>
+
+          {/* Interviewer selector */}
           <h3 className="text-sm mt-3 font-medium">Select an Interviewer:</h3>
           <div className="relative flex items-center mt-1">
             <div
               id="slider-3"
-              className=" h-36 pt-1 overflow-x-scroll scroll whitespace-nowrap scroll-smooth scrollbar-hide w-[27.5rem]"
+              className="h-36 pt-1 overflow-x-scroll scroll whitespace-nowrap scroll-smooth scrollbar-hide w-[27.5rem]"
             >
-              {interviewers.map((item, key) => (
+              {interviewers.map((item) => (
                 <div
-                  className=" p-0 inline-block cursor-pointer ml-1 mr-5 rounded-xl shrink-0 overflow-hidden"
+                  className="p-0 inline-block cursor-pointer ml-1 mr-5 rounded-xl shrink-0 overflow-hidden"
                   key={item.id}
                 >
                   <button
@@ -190,7 +164,9 @@ function DetailsPopup({
                   <button
                     type="button"
                     className={`w-[96px] overflow-hidden rounded-full ${
-                      String(selectedInterviewer) === String(item.id) ? "border-4 border-indigo-600" : ""
+                      String(selectedInterviewer) === String(item.id)
+                        ? "border-4 border-indigo-600"
+                        : ""
                     }`}
                     onClick={() => setSelectedInterviewer(item.id)}
                   >
@@ -212,7 +188,7 @@ function DetailsPopup({
                 </div>
               ))}
             </div>
-            {interviewers.length > 4 ? (
+            {interviewers.length > 4 && (
               <div className="flex-row justify-center ml-3 mb-1 items-center space-y-6">
                 <ChevronRight
                   className="opacity-50 cursor-pointer hover:opacity-100"
@@ -225,20 +201,23 @@ function DetailsPopup({
                   onClick={() => slideLeft("slider-3", 115)}
                 />
               </div>
-            ) : (
-              <></>
             )}
           </div>
-          <h3 className="text-sm font-medium">Objective:</h3>
+
+          {/* Objective */}
+          <h3 className="text-sm font-medium">What do you want to practice?</h3>
           <Textarea
             value={objective}
             className="h-24 mt-2 border-2 border-gray-500 w-[33.2rem]"
-            placeholder="e.g. Find best candidates based on their technical skills and previous projects."
+            placeholder="e.g. PM interview focusing on prioritisation, metrics, and stakeholder management. I have 3 years of B2C product experience."
             onChange={(e) => setObjective(e.target.value)}
             onBlur={(e) => setObjective(e.target.value.trim())}
           />
+
+          {/* Document upload */}
           <h3 className="text-sm font-medium mt-2">
-            Upload any documents related to the interview.
+            Upload your resume or a job description{" "}
+            <span className="font-normal text-gray-500">(optional — helps tailor questions)</span>
           </h3>
           <FileUpload
             isUploaded={isUploaded}
@@ -247,10 +226,12 @@ function DetailsPopup({
             setFileName={setFileName}
             setUploadedDocumentContext={setUploadedDocumentContext}
           />
-          <div className="flex-col mt-7 w-full">
+
+          {/* Anonymous toggle */}
+          <div className="flex-col mt-4 w-full">
             <div className="flex items-center cursor-pointer">
               <span className="text-sm font-medium">
-                Do you prefer the interviewees&apos; responses to be anonymous?
+                Keep responses anonymous?
               </span>
               <Switch
                 checked={isAnonymous}
@@ -258,95 +239,49 @@ function DetailsPopup({
                 onCheckedChange={(checked) => setIsAnonymous(checked)}
               />
             </div>
-            <span
-              style={{ fontSize: "0.7rem", lineHeight: "0.66rem" }}
-              className="font-light text-xs italic w-full text-left block"
-            >
-              Note: If not anonymous, the interviewee&apos;s email and name will be collected.
+          </div>
+
+          {/* Duration */}
+          <div className="flex flex-row justify-center items-center mt-4">
+            <h3 className="text-sm font-medium">Duration (mins):</h3>
+            <input
+              type="number"
+              step="1"
+              min="1"
+              className="border-b-2 text-center focus:outline-none border-gray-500 w-16 px-2 py-0.5 ml-3"
+              value={duration}
+              placeholder="20"
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === "" || (Number.isInteger(Number(value)) && Number(value) > 0)) {
+                  setDuration(value);
+                }
+              }}
+            />
+            <span className="text-xs text-gray-400 ml-3">
+              {duration
+                ? `~${Math.max(4, Math.ceil(Number(duration) / 4))} topics to cover`
+                : ""}
             </span>
           </div>
-          <div className="flex flex-row gap-3 justify-between w-full mt-3">
-            <div className="flex flex-row justify-center items-center ">
-              <h3 className="text-sm font-medium ">Number of Questions:</h3>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                className="border-b-2 text-center focus:outline-none  border-gray-500 w-14 px-2 py-0.5 ml-3"
-                value={numQuestions}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value === "" || (Number.isInteger(Number(value)) && Number(value) > 0)) {
-                    setNumQuestions(value);
-                  }
-                }}
-              />
-            </div>
-            <div className="flex flex-row justify-center items-center">
-              <h3 className="text-sm font-medium ">Duration (mins):</h3>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                className="border-b-2 text-center focus:outline-none  border-gray-500 w-14 px-2 py-0.5 ml-3"
-                value={duration}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value === "" || (Number.isInteger(Number(value)) && Number(value) > 0)) {
-                    setDuration(value);
-                  }
-                }}
-              />
-            </div>
-          </div>
-          <div className="flex flex-row w-full justify-center items-center space-x-24 mt-5">
+
+          {/* Create button */}
+          <div className="flex flex-row w-full justify-center mt-6 mb-2">
             <Button
-              disabled={
-                !(
-                  name &&
-                  objective &&
-                  numQuestions &&
-                  duration &&
-                  String(selectedInterviewer) !== "0"
-                ) || isClicked
-              }
-              className="bg-indigo-600 hover:bg-indigo-800 w-40"
-              onClick={() => {
-                // Don't set isClicked here — setLoading(true) inside
-                // onGenrateQuestions already shows the spinner and prevents
-                // double-clicks via the disabled condition on isClicked.
-                onGenrateQuestions();
-              }}
+              disabled={!isValid}
+              className="bg-indigo-600 hover:bg-indigo-800 w-48"
+              onClick={onCreate}
             >
-              Generate Questions
-            </Button>
-            <Button
-              disabled={
-                !(
-                  name &&
-                  objective &&
-                  numQuestions &&
-                  duration &&
-                  String(selectedInterviewer) !== "0"
-                ) || isClicked
-              }
-              className="bg-indigo-600 w-40 hover:bg-indigo-800"
-              onClick={() => {
-                setIsClicked(true);
-                onManual();
-              }}
-            >
-              I&apos;ll do it myself
+              Create Interview
             </Button>
           </div>
         </div>
       </div>
+
       <Modal
         open={openInterviewerDetails}
         closeOnOutsideClick={true}
-        onClose={() => {
-          setOpenInterviewerDetails(false);
-        }}
+        onClose={() => setOpenInterviewerDetails(false)}
       >
         <InterviewerDetailsModal interviewer={interviewerDetails} />
       </Modal>

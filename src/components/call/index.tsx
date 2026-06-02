@@ -194,11 +194,14 @@ function Call({ interview }: InterviewProps) {
         call_id: newCallId,
         interview_id: interview.id,
         objective: interview.objective,
+        // questions is empty for adaptive interviews — LLM improvises
         questions: interview.questions?.map((q: { question: string }) => q.question) ?? [],
         time_duration: interview.time_duration,
         interviewer_id: String(interview.interviewer_id),
         // Used by server.py to select the right Piper TTS voice per persona
         interviewer_name: interviewerName,
+        // Extracted PDF text — lets the interviewer reference your background
+        document_context: interview.document_context ?? "",
       };
 
       // Build transport + client
