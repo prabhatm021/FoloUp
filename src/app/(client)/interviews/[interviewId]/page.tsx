@@ -24,10 +24,9 @@ import { InterviewService } from "@/services/interviews.service";
 import { ResponseService } from "@/services/responses.service";
 import type { Interview } from "@/types/interview";
 import type { Response } from "@/types/response";
-import { Eye, Filter, Palette, Pencil, Share2, UserIcon } from "lucide-react";
+import { Eye, Filter, Pencil, Share2, UserIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { useState, useEffect, use } from "react";
-import { ChromePicker } from "react-color";
 import { toast } from "sonner";
 
 interface Props {
@@ -54,9 +53,6 @@ function InterviewHome({ params, searchParams }: Props) {
   const [isGeneratingInsights, setIsGeneratingInsights] = useState<boolean>(false);
   const [isViewed, setIsViewed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
-  const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
-  const [themeColor, setThemeColor] = useState<string>("#4F46E5");
-  const [iconColor, seticonColor] = useState<string>("#4F46E5");
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
 
   const seeInterviewPreviewPage = () => {
@@ -80,8 +76,6 @@ function InterviewHome({ params, searchParams }: Props) {
         setInterview(response);
         setIsActive(response.is_active);
         setIsViewed(response.is_viewed);
-        setThemeColor(response.theme_color ?? "#4F46E5");
-        seticonColor(response.theme_color ?? "#4F46E5");
         setLoading(true);
       } catch (error) {
         console.error(error);
@@ -158,22 +152,6 @@ function InterviewHome({ params, searchParams }: Props) {
     }
   };
 
-  const handleThemeColorChange = async (newColor: string) => {
-    try {
-      await InterviewService.updateInterview({ theme_color: newColor }, resolvedParams.interviewId);
-
-      toast.success("Theme color updated", {
-        position: "bottom-right",
-        duration: 3000,
-      });
-    } catch (error) {
-      console.error(error);
-      toast.error("Error", {
-        description: "Failed to update the theme color.",
-        duration: 3000,
-      });
-    }
-  };
 
   const handleCandidateStatusChange = (callId: string, newStatus: string) => {
     setResponses((prevResponses) => {
@@ -191,17 +169,6 @@ function InterviewHome({ params, searchParams }: Props) {
     setIsSharePopupOpen(false);
   };
 
-  const handleColorChange = (color: { hex: string }) => {
-    setThemeColor(color.hex);
-  };
-
-  const applyColorChange = () => {
-    if (themeColor !== iconColor) {
-      seticonColor(themeColor);
-      handleThemeColorChange(themeColor);
-    }
-    setShowColorPicker(false);
-  };
 
   const filterResponses = () => {
     if (!responses) {
@@ -224,11 +191,6 @@ function InterviewHome({ params, searchParams }: Props) {
         <>
           <div className="flex flex-row p-3 pt-4 justify-center gap-6 items-center sticky top-2 bg-white">
             <div className="font-bold text-md">{interview?.name}</div>
-
-            <div
-              className="w-5 h-5 rounded-full border-2 border-white shadow"
-              style={{ backgroundColor: iconColor }}
-            />
 
             <div className="flex flex-row gap-3 my-auto">
               <UserIcon className="my-auto" size={16} />: {responses?.length ?? 0}
@@ -270,24 +232,6 @@ function InterviewHome({ params, searchParams }: Props) {
                 </TooltipTrigger>
                 <TooltipContent className="bg-zinc-300" side="bottom" sideOffset={4}>
                   <span className="text-black flex flex-row gap-4">Preview</span>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    className="bg-transparent shadow-none text-xs text-indigo-600 px-0 h-7 hover:scale-110 relative"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setShowColorPicker(!showColorPicker);
-                    }}
-                  >
-                    <Palette size={19} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="bg-zinc-300" side="bottom" sideOffset={4}>
-                  <span className="text-black flex flex-row gap-4">Theme Color</span>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -464,23 +408,6 @@ function InterviewHome({ params, searchParams }: Props) {
             )}
           </div>
         </>
-      )}
-      {showColorPicker && (
-      <Modal open={showColorPicker} closeOnOutsideClick={false} onClose={applyColorChange}>
-        <div className="w-[250px] p-3">
-          <h3 className="text-lg font-semibold mb-4 text-center">Choose a Theme Color</h3>
-          <ChromePicker
-            disableAlpha={true}
-            color={themeColor}
-            styles={{
-              default: {
-                picker: { width: "100%" },
-              },
-            }}
-            onChange={handleColorChange}
-          />
-        </div>
-      </Modal>
       )}
       {isSharePopupOpen && (
         <SharePopup
