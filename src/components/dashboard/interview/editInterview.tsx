@@ -272,26 +272,6 @@ function EditInterview({ interview }: EditInterviewProps) {
           </span>
         </div>
         <div className="flex flex-row justify-between w-[75%] gap-3 ml-2">
-          <div className="flex flex-row justify-center items-center mt-5 ">
-            <h3 className="font-medium ">No. of Questions:</h3>
-            <input
-              type="number"
-              step="1"
-              max="5"
-              min={questions.length.toString()}
-              className="border-2 text-center focus:outline-none  bg-slate-100 rounded-md border-gray-500 w-14 px-2 py-0.5 ml-3"
-              value={numQuestions}
-              onChange={(e) => {
-                let value = e.target.value;
-                if (value === "" || (Number.isInteger(Number(value)) && Number(value) > 0)) {
-                  if (Number(value) > 5) {
-                    value = "5";
-                  }
-                  setNumQuestions(Number(value));
-                }
-              }}
-            />
-          </div>
           <div className="flex flex-row items-center mt-5">
             <h3 className="font-medium ">Duration (mins):</h3>
             <input
