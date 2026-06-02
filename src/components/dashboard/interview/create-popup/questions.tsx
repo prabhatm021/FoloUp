@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useInterviews } from "@/contexts/interviews.context";
 import type { InterviewBase, Question } from "@/types/interview";
-import { useClerk, useOrganization } from "@clerk/nextjs";
+import { LOCAL_ORG_ID, LOCAL_ORG_NAME, LOCAL_USER_ID } from "@/lib/local-user";
 import axios from "axios";
 import { Plus } from "lucide-react";
 import { ChevronLeft } from "lucide-react";
@@ -17,8 +17,6 @@ interface Props {
 }
 
 function QuestionsPopup({ interviewData, setProceed, setOpen }: Props) {
-  const { user } = useClerk();
-  const { organization } = useOrganization();
   const [isClicked, setIsClicked] = useState(false);
 
   const [questions, setQuestions] = useState<Question[]>(interviewData.questions);
@@ -28,9 +26,11 @@ function QuestionsPopup({ interviewData, setProceed, setOpen }: Props) {
   const endOfListRef = useRef<HTMLDivElement>(null);
   const prevQuestionLengthRef = useRef(questions.length);
 
+  // Use functional update so we always operate on the latest state,
+  // not a stale closure snapshot captured at render time.
   const handleInputChange = (id: string, newQuestion: Question) => {
-    setQuestions(
-      questions.map((question) =>
+    setQuestions((prev) =>
+      prev.map((question) =>
         question.id === id ? { ...question, ...newQuestion } : question,
       ),
     );
@@ -51,37 +51,30 @@ function QuestionsPopup({ interviewData, setProceed, setOpen }: Props) {
     setQuestions(questions.filter((question) => question.id !== id));
   };
 
-  const handleAddQuestion = () => {
-    if (questions.length < interviewData.question_count) {
-      setQuestions([...questions, { id: uuidv4(), question: "", follow_up_count: 1 }]);
-    }
-  };
-
   const onSave = async () => {
     try {
-      interviewData.user_id = user?.id || "";
-      interviewData.organization_id = organization?.id || "";
-
-      interviewData.questions = questions;
-      interviewData.description = description;
-
-      // Convert BigInts to strings if necessary
       const sanitizedInterviewData = {
         ...interviewData,
-        interviewer_id: interviewData.interviewer_id.toString(),
-        response_count: interviewData.response_count.toString(),
-        logo_url: organization?.imageUrl || "",
+        user_id: LOCAL_USER_ID,
+        organization_id: LOCAL_ORG_ID,
+        questions,
+        description,
+        // Supabase expects a string / number — convert BigInt safely
+        interviewer_id: String(interviewData.interviewer_id),
+        response_count: String(interviewData.response_count),
+        logo_url: "",
       };
 
-      const response = await axios.post("/api/create-interview", {
-        organizationName: organization?.name,
+      await axios.post("/api/create-interview", {
+        organizationName: LOCAL_ORG_NAME,
         interviewData: sanitizedInterviewData,
       });
-      setIsClicked(false);
       fetchInterviews();
       setOpen(false);
     } catch (error) {
       console.error("Error creating interview:", error);
+      // Always reset so the user can retry
+      setIsClicked(false);
     }
   };
 
@@ -124,17 +117,16 @@ function QuestionsPopup({ interviewData, setProceed, setOpen }: Props) {
           ))}
           <div ref={endOfListRef} />
         </ScrollArea>
-        {questions.length < interviewData.question_count ? (
-          <button
-            type="button"
-            className="border-indigo-600 opacity-75 hover:opacity-100 w-fit rounded-full"
-            onClick={handleAddQuestion}
-          >
-            <Plus size={45} strokeWidth={2.2} className="text-indigo-600 cursor-pointer" />
-          </button>
-        ) : (
-          <></>
-        )}
+        {/* Always show the add button so the user can add more questions freely */}
+        <button
+          type="button"
+          className="border-indigo-600 opacity-75 hover:opacity-100 w-fit rounded-full"
+          onClick={() =>
+            setQuestions([...questions, { id: uuidv4(), question: "", follow_up_count: 1 }])
+          }
+        >
+          <Plus size={45} strokeWidth={2.2} className="text-indigo-600 cursor-pointer" />
+        </button>
       </div>
       <p className="mt-3 mb-1 ml-2 font-medium">
         Interview Description{" "}
@@ -157,13 +149,23 @@ function QuestionsPopup({ interviewData, setProceed, setOpen }: Props) {
           setDescription(e.target.value.trim());
         }}
       />
+      {/* Show exactly what's still missing so Save is never a mystery */}
+      {(() => {
+        const emptyCount = questions.filter((q) => q.question.trim() === "").length;
+        if (emptyCount > 0)
+          return (
+            <p className="text-xs text-red-500 mr-5 mt-2 text-right">
+              {emptyCount} question{emptyCount > 1 ? "s" : ""} still need text
+            </p>
+          );
+        return null;
+      })()}
       <div className="flex flex-row justify-end items-end w-full">
         <Button
           disabled={
             isClicked ||
-            questions.length < interviewData.question_count ||
-            description.trim() === "" ||
-            questions.some((question) => question.question.trim() === "")
+            questions.length === 0 ||
+            questions.some((q) => q.question.trim() === "")
           }
           className="bg-indigo-600 hover:bg-indigo-800 mr-5 mt-2"
           onClick={() => {
@@ -171,7 +173,7 @@ function QuestionsPopup({ interviewData, setProceed, setOpen }: Props) {
             onSave();
           }}
         >
-          Save
+          {isClicked ? "Saving…" : "Save"}
         </Button>
       </div>
     </div>

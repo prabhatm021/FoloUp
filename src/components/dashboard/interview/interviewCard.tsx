@@ -122,13 +122,15 @@ function InterviewCard({ name, interviewerId, id, url, readableSlug }: Props) {
           </div>
           <div className="flex flex-row items-center mx-4 ">
             <div className="w-full overflow-hidden">
-              <Image
-                src={img}
-                alt="Picture of the interviewer"
-                width={70}
-                height={70}
-                className="object-cover object-center"
-              />
+              {img && (
+                <Image
+                  src={img}
+                  alt="Picture of the interviewer"
+                  width={70}
+                  height={70}
+                  className="object-cover object-center"
+                />
+              )}
             </div>
             <div className="text-black text-sm font-semibold mt-2 mr-2 whitespace-nowrap">
               Responses: <span className="font-normal">{responseCount?.toString() || 0}</span>

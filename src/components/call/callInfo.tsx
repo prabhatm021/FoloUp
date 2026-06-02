@@ -29,7 +29,7 @@ import type { Analytics, CallData } from "@/types/response";
 import { CircularProgress } from "@nextui-org/react";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
 import axios from "axios";
-import { DownloadIcon, TrashIcon } from "lucide-react";
+import { DownloadIcon, RefreshCwIcon, TrashIcon } from "lucide-react";
 import { ArrowLeft } from "lucide-react";
 import { marked } from "marked";
 import { useRouter } from "next/navigation";
@@ -56,25 +56,23 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
   const [interviewId, setInterviewId] = useState<string>("");
   const [tabSwitchCount, setTabSwitchCount] = useState<number>();
 
+  const fetchCallData = async (reanalyse = false) => {
+    setIsLoading(true);
+    setCall(undefined);
+    setAnalytics(null);
+    try {
+      const response = await axios.post("/api/get-call", { id: call_id, reanalyse });
+      setCall(response.data.callResponse);
+      setAnalytics(response.data.analytics);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchResponses = async () => {
-      setIsLoading(true);
-      setCall(undefined);
-      setEmail("");
-      setName("");
-
-      try {
-        const response = await axios.post("/api/get-call", { id: call_id });
-        setCall(response.data.callResponse);
-        setAnalytics(response.data.analytics);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchResponses();
+    fetchCallData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call_id]);
 
@@ -100,24 +98,29 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
   }, [call_id]);
 
   useEffect(() => {
-    const replaceAgentAndUser = (transcript: string, name: string): string => {
-      const agentReplacement = "**AI interviewer:**";
-      const userReplacement = `**${name}:**`;
+    if (!call || !name) return;
 
-      // Replace "Agent:" with "AI interviewer:" and "User:" with the variable `${name}:`
-      let updatedTranscript = transcript
-        .replace(/Agent:/g, agentReplacement)
-        .replace(/User:/g, userReplacement);
+    // Pipecat sessions save details.transcript as [{role, content}] array.
+    // Older VAPI sessions saved it as a plain "Agent: ...\nUser: ..." string.
+    // Normalise both to a consistent string before rendering.
+    let rawTranscript: string;
 
-      // Add space between the dialogues
-      updatedTranscript = updatedTranscript.replace(/(?:\r\n|\r|\n)/g, "\n\n");
-
-      return updatedTranscript;
-    };
-
-    if (call && name) {
-      setTranscript(replaceAgentAndUser(call?.transcript as string, name));
+    if (Array.isArray(call.transcript)) {
+      // Pipecat format → convert to readable dialogue
+      rawTranscript = (call.transcript as Array<{ role: string; content: string }>)
+        .map((t) => `${t.role === "bot" ? "Interviewer" : name}: ${t.content}`)
+        .join("\n\n");
+    } else if (typeof call.transcript === "string") {
+      // Legacy VAPI string format
+      rawTranscript = (call.transcript as string)
+        .replace(/Agent:/g, "**Interviewer:**")
+        .replace(/User:/g, `**${name}:**`)
+        .replace(/(?:\r\n|\r|\n)/g, "\n\n");
+    } else {
+      rawTranscript = "";
     }
+
+    setTranscript(rawTranscript);
   }, [call, name]);
 
   const onDeleteResponseClick = async () => {
@@ -194,6 +197,15 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
                     </div>
                   </div>
                   <div className="flex flex-row mr-2 items-center gap-3">
+                    <Button
+                      variant="outline"
+                      className="border-indigo-300 text-indigo-600 hover:bg-indigo-50 p-2 h-9"
+                      title="Re-run analytics with fresh Groq analysis"
+                      onClick={() => fetchCallData(true)}
+                    >
+                      <RefreshCwIcon size={14} className="mr-1" />
+                      Re-analyse
+                    </Button>
                     <Select
                       value={candidateStatus}
                       onValueChange={async (newValue: string) => {
@@ -236,7 +248,7 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
                       </SelectContent>
                     </Select>
                     <AlertDialog>
-                      <AlertDialogTrigger>
+                      <AlertDialogTrigger asChild>
                         <Button disabled={isClicked} className="bg-red-500 hover:bg-red-600 p-2">
                           <TrashIcon size={16} className="" />
                         </Button>
@@ -305,7 +317,7 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
                       showValueLabel={true}
                       formatOptions={{ signDisplay: "never" }}
                     />
-                    <p className="font-medium my-auto text-xl">Overall Hiring Score</p>
+                    <span className="font-medium my-auto text-xl">Overall Hiring Score</span>
                   </div>
                   <div className="">
                     <div className="font-medium ">
@@ -335,14 +347,14 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
                       strokeWidth={4}
                       showValueLabel={true}
                       valueLabel={
-                        <div className="flex items-baseline">
+                        <span className="flex items-baseline">
                           {analytics?.communication.score ?? 0}
                           <span className="text-xl ml-0.5">/10</span>
-                        </div>
+                        </span>
                       }
                       formatOptions={{ signDisplay: "never" }}
                     />
-                    <p className="font-medium my-auto text-xl">Communication</p>
+                    <span className="font-medium my-auto text-xl">Communication</span>
                   </div>
                   <div className="">
                     <div className="font-medium ">
@@ -357,41 +369,35 @@ function CallInfo({ call_id, onDeleteResponse, onCandidateStatusChange }: CallPr
                 </div>
               )}
               <div className="flex flex-col gap-3 text-sm p-4 rounded-2xl bg-slate-50">
-                <div className="flex flex-row gap-2  align-middle">
-                  <p className="my-auto">User Sentiment: </p>
-                  <p className="font-medium my-auto">
-                    {call?.call_analysis?.user_sentiment === undefined ? (
-                      <Skeleton className="w-[200px] h-[20px]" />
-                    ) : (
-                      call?.call_analysis?.user_sentiment
-                    )}
-                  </p>
-
-                  <div
-                    className={`${
-                      call?.call_analysis?.user_sentiment === "Neutral"
-                        ? "text-yellow-500"
-                        : call?.call_analysis?.user_sentiment === "Negative"
-                          ? "text-red-500"
-                          : call?.call_analysis?.user_sentiment === "Positive"
-                            ? "text-green-500"
-                            : "text-transparent"
-                    } text-xl`}
-                  >
-                    ●
-                  </div>
+                <div className="flex flex-row gap-2 align-middle">
+                  <span className="my-auto">User Sentiment: </span>
+                  <span className="font-medium my-auto flex items-center gap-2">
+                    {analytics?.userSentiment ?? call?.call_analysis?.user_sentiment ?? "—"}
+                    <span
+                      className={`text-xl ${
+                        (analytics?.userSentiment ?? call?.call_analysis?.user_sentiment) === "Neutral"
+                          ? "text-yellow-500"
+                          : (analytics?.userSentiment ?? call?.call_analysis?.user_sentiment) === "Negative"
+                            ? "text-red-500"
+                            : (analytics?.userSentiment ?? call?.call_analysis?.user_sentiment) === "Positive"
+                              ? "text-green-500"
+                              : "text-transparent"
+                      }`}
+                    >
+                      ●
+                    </span>
+                  </span>
                 </div>
-                <div className="">
-                  <div className="font-medium  ">
-                    <span className="font-normal">Call Summary: </span>
-                    {call?.call_analysis?.call_summary === undefined ? (
-                      <Skeleton className="w-[200px] h-[20px]" />
-                    ) : (
-                      call?.call_analysis?.call_summary
-                    )}
-                  </div>
+                <div className="font-medium">
+                  <span className="font-normal">Call Summary: </span>
+                  {analytics?.callSummary ?? call?.call_analysis?.call_summary ?? "—"}
                 </div>
-                <p className="font-medium ">{call?.call_analysis?.call_completion_rating_reason}</p>
+                {(analytics?.callCompletionRating ?? call?.call_analysis?.call_completion_rating) && (
+                  <div className="font-medium">
+                    <span className="font-normal">Completion: </span>
+                    {analytics?.callCompletionRating ?? call?.call_analysis?.call_completion_rating}
+                  </div>
+                )}
               </div>
             </div>
           </div>

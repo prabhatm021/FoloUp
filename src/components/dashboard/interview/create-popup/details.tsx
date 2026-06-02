@@ -48,6 +48,14 @@ function DetailsPopup({
     interviewData.question_count === 0 ? "" : String(interviewData.question_count),
   );
   const [duration, setDuration] = useState(interviewData.time_duration);
+
+  // Auto-select the first available interviewer so the buttons are never blocked
+  // by a missed click (single-user local mode — no need to choose manually)
+  useEffect(() => {
+    if (interviewers.length > 0 && selectedInterviewer === BigInt(0)) {
+      setSelectedInterviewer(interviewers[0].id);
+    }
+  }, [interviewers, selectedInterviewer]);
   const [uploadedDocumentContext, setUploadedDocumentContext] = useState("");
 
   const slideLeft = (id: string, value: number) => {
@@ -67,20 +75,51 @@ function DetailsPopup({
   const onGenrateQuestions = async () => {
     setLoading(true);
 
-    const data = {
-      name: name.trim(),
-      objective: objective.trim(),
-      number: numQuestions,
-      context: uploadedDocumentContext,
-    };
+    try {
+      const data = {
+        name: name.trim(),
+        objective: objective.trim(),
+        number: numQuestions,
+        duration: duration,
+        context: uploadedDocumentContext,
+      };
 
-    const generatedQuestions = (await axios.post("/api/generate-interview-questions", data)) as any;
+      const generatedQuestions = (await axios.post("/api/generate-interview-questions", data)) as any;
+      const generatedQuestionsResponse = JSON.parse(generatedQuestions?.data?.response);
 
-    const generatedQuestionsResponse = JSON.parse(generatedQuestions?.data?.response);
+      const updatedQuestions = generatedQuestionsResponse.questions.map((question: Question) => ({
+        id: uuidv4(),
+        question: question.question.trim(),
+        follow_up_count: 1,
+      }));
 
-    const updatedQuestions = generatedQuestionsResponse.questions.map((question: Question) => ({
+      const updatedInterviewData = {
+        ...interviewData,
+        name: name.trim(),
+        objective: objective.trim(),
+        questions: updatedQuestions,
+        interviewer_id: selectedInterviewer,
+        question_count: Number(numQuestions),
+        time_duration: duration,
+        description: generatedQuestionsResponse.description,
+        is_anonymous: isAnonymous,
+      };
+      setInterviewData(updatedInterviewData);
+    } catch (err) {
+      console.error("Generate questions failed:", err);
+      setLoading(false);
+      setIsClicked(false); // reset so the user can try again
+    }
+  };
+
+  const onManual = () => {
+    setLoading(true);
+
+    // Pre-create all question slots so the user just fills them in — no hidden "+ add" step
+    const count = Math.max(1, Number(numQuestions));
+    const emptyQuestions = Array.from({ length: count }, () => ({
       id: uuidv4(),
-      question: question.question.trim(),
+      question: "",
       follow_up_count: 1,
     }));
 
@@ -88,26 +127,9 @@ function DetailsPopup({
       ...interviewData,
       name: name.trim(),
       objective: objective.trim(),
-      questions: updatedQuestions,
+      questions: emptyQuestions,
       interviewer_id: selectedInterviewer,
-      question_count: Number(numQuestions),
-      time_duration: duration,
-      description: generatedQuestionsResponse.description,
-      is_anonymous: isAnonymous,
-    };
-    setInterviewData(updatedInterviewData);
-  };
-
-  const onManual = () => {
-    setLoading(true);
-
-    const updatedInterviewData = {
-      ...interviewData,
-      name: name.trim(),
-      objective: objective.trim(),
-      questions: [{ id: uuidv4(), question: "", follow_up_count: 1 }],
-      interviewer_id: selectedInterviewer,
-      question_count: Number(numQuestions),
+      question_count: count,
       time_duration: String(duration),
       description: "",
       is_anonymous: isAnonymous,
@@ -168,17 +190,23 @@ function DetailsPopup({
                   <button
                     type="button"
                     className={`w-[96px] overflow-hidden rounded-full ${
-                      selectedInterviewer === item.id ? "border-4 border-indigo-600" : ""
+                      String(selectedInterviewer) === String(item.id) ? "border-4 border-indigo-600" : ""
                     }`}
                     onClick={() => setSelectedInterviewer(item.id)}
                   >
-                    <Image
-                      src={item.image}
-                      alt="Picture of the interviewer"
-                      width={70}
-                      height={70}
-                      className="w-full h-full object-cover"
-                    />
+                    {item.image ? (
+                      <Image
+                        src={item.image}
+                        alt="Picture of the interviewer"
+                        width={70}
+                        height={70}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-[70px] h-[70px] bg-gray-200 flex items-center justify-center text-xs text-gray-500">
+                        {item.name?.[0] ?? "?"}
+                      </div>
+                    )}
                   </button>
                   <CardTitle className="mt-0 text-xs text-center">{item.name}</CardTitle>
                 </div>
@@ -243,16 +271,12 @@ function DetailsPopup({
               <input
                 type="number"
                 step="1"
-                max="5"
                 min="1"
                 className="border-b-2 text-center focus:outline-none  border-gray-500 w-14 px-2 py-0.5 ml-3"
                 value={numQuestions}
                 onChange={(e) => {
-                  let value = e.target.value;
+                  const value = e.target.value;
                   if (value === "" || (Number.isInteger(Number(value)) && Number(value) > 0)) {
-                    if (Number(value) > 5) {
-                      value = "5";
-                    }
                     setNumQuestions(value);
                   }
                 }}
@@ -263,16 +287,12 @@ function DetailsPopup({
               <input
                 type="number"
                 step="1"
-                max="10"
                 min="1"
                 className="border-b-2 text-center focus:outline-none  border-gray-500 w-14 px-2 py-0.5 ml-3"
                 value={duration}
                 onChange={(e) => {
-                  let value = e.target.value;
+                  const value = e.target.value;
                   if (value === "" || (Number.isInteger(Number(value)) && Number(value) > 0)) {
-                    if (Number(value) > 10) {
-                      value = "10";
-                    }
                     setDuration(value);
                   }
                 }}
@@ -287,12 +307,14 @@ function DetailsPopup({
                   objective &&
                   numQuestions &&
                   duration &&
-                  selectedInterviewer !== BigInt(0)
+                  String(selectedInterviewer) !== "0"
                 ) || isClicked
               }
-              className="bg-indigo-600 hover:bg-indigo-800  w-40"
+              className="bg-indigo-600 hover:bg-indigo-800 w-40"
               onClick={() => {
-                setIsClicked(true);
+                // Don't set isClicked here — setLoading(true) inside
+                // onGenrateQuestions already shows the spinner and prevents
+                // double-clicks via the disabled condition on isClicked.
                 onGenrateQuestions();
               }}
             >
@@ -305,7 +327,7 @@ function DetailsPopup({
                   objective &&
                   numQuestions &&
                   duration &&
-                  selectedInterviewer !== BigInt(0)
+                  String(selectedInterviewer) !== "0"
                 ) || isClicked
               }
               className="bg-indigo-600 w-40 hover:bg-indigo-800"

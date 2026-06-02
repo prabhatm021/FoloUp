@@ -2,7 +2,7 @@
 
 import { InterviewService } from "@/services/interviews.service";
 import type { Interview } from "@/types/interview";
-import { useClerk, useOrganization } from "@clerk/nextjs";
+import { LOCAL_ORG_ID, LOCAL_USER_ID } from "@/lib/local-user";
 import React, { useState, useContext, type ReactNode, useEffect } from "react";
 
 interface InterviewContextProps {
@@ -29,18 +29,12 @@ interface InterviewProviderProps {
 
 export function InterviewProvider({ children }: InterviewProviderProps) {
   const [interviews, setInterviews] = useState<Interview[]>([]);
-  const { user } = useClerk();
-  const { organization } = useOrganization();
   const [interviewsLoading, setInterviewsLoading] = useState(false);
 
   const fetchInterviews = async () => {
     try {
       setInterviewsLoading(true);
-      const response = await InterviewService.getAllInterviews(
-        user?.id as string,
-        organization?.id as string,
-      );
-      setInterviewsLoading(false);
+      const response = await InterviewService.getAllInterviews(LOCAL_USER_ID, LOCAL_ORG_ID);
       setInterviews(response);
     } catch (error) {
       console.error(error);
@@ -50,17 +44,12 @@ export function InterviewProvider({ children }: InterviewProviderProps) {
 
   const getInterviewById = async (interviewId: string) => {
     const response = await InterviewService.getInterviewById(interviewId);
-
     return response;
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
-    if (organization?.id || user?.id) {
-      fetchInterviews();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organization?.id, user?.id]);
+    fetchInterviews();
+  }, []);
 
   return (
     <InterviewContext.Provider
@@ -80,6 +69,5 @@ export function InterviewProvider({ children }: InterviewProviderProps) {
 
 export const useInterviews = () => {
   const value = useContext(InterviewContext);
-
   return value;
 };

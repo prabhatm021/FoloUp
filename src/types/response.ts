@@ -19,12 +19,16 @@ export interface Analytics {
   overallScore: number;
   overallFeedback: string;
   communication: { score: number; feedback: string };
-  generalIntelligence: string;
+  generalIntelligence?: string;
   softSkillSummary: string;
   questionSummaries: Array<{
     question: string;
     summary: string;
   }>;
+  // Fields added for Pipecat sessions (previously came from VAPI call_analysis)
+  userSentiment?: "Positive" | "Neutral" | "Negative";
+  callSummary?: string;
+  callCompletionRating?: "Complete" | "Partial" | "Incomplete";
 }
 
 export interface FeedbackData {
@@ -52,7 +56,8 @@ export interface CallData {
   opt_out_sensitive_data_storage: boolean;
   start_timestamp: number;
   end_timestamp: number;
-  transcript: string;
+  // Pipecat sessions: Array<{role, content}>. Legacy VAPI sessions: string.
+  transcript: string | Array<{ role: string; content: string }>;
   transcript_object: {
     role: "agent" | "user";
     content: string;

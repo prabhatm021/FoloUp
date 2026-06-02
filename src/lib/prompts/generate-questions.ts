@@ -1,32 +1,46 @@
 export const SYSTEM_PROMPT =
-  "You are an expert in coming up with follow up questions to uncover deeper insights.";
+  "You are an expert interview designer who crafts targeted, insightful questions tailored to any role or domain.";
 
 export const generateQuestionsPrompt = (body: {
   name: string;
   objective: string;
   number: number;
+  duration: string | number;
   context: string;
-}) => `Imagine you are an interviewer specialized in designing interview questions to help hiring managers find candidates with strong technical expertise and project experience, making it easier to identify the ideal fit for the role.
-              
+}) => {
+  const minutesPerQuestion =
+    body.duration && body.number
+      ? Math.round(Number(body.duration) / Number(body.number))
+      : null;
+
+  return `You are designing interview questions for the following interview.
+
 Interview Title: ${body.name}
 Interview Objective: ${body.objective}
+Number of questions to generate: ${body.number}
+Total interview duration: ${body.duration} minutes${minutesPerQuestion ? ` (~${minutesPerQuestion} min per question)` : ""}
 
-Number of questions to be generated: ${body.number}
+${body.context ? `Additional context (e.g. uploaded job description or resume):\n${body.context}\n` : ""}
 
-Follow these detailed guidelines when crafting the questions:
-- Focus on evaluating the candidate's technical knowledge and their experience working on relevant projects. Questions should aim to gauge depth of expertise, problem-solving ability, and hands-on project experience. These aspects carry the most weight.
-- Include questions designed to assess problem-solving skills through practical examples. For instance, how the candidate has tackled challenges in previous projects, and their approach to complex technical issues.
-- Soft skills such as communication, teamwork, and adaptability should be addressed, but given less emphasis compared to technical and problem-solving abilities.
-- Maintain a professional yet approachable tone, ensuring candidates feel comfortable while demonstrating their knowledge.
-- Ask concise and precise open-ended questions that encourage detailed responses. Each question should be 30 words or less for clarity.
+Guidelines for crafting the questions:
+- Tailor every question directly to the objective. If the objective is about product management, ask PM questions. If it is about engineering, ask engineering questions. Never default to generic "tell me about yourself" filler.
+- Calibrate question depth to the time available: with ~${minutesPerQuestion ?? "few"} minutes per question, ${
+    minutesPerQuestion && minutesPerQuestion <= 3
+      ? "keep questions focused and answerable in 2-3 minutes — avoid multi-part or heavily open-ended questions."
+      : minutesPerQuestion && minutesPerQuestion <= 6
+        ? "questions should allow for a structured ~5 minute answer — good for STAR-format responses."
+        : "questions can be broad and exploratory, expecting detailed answers with examples and follow-up depth."
+  }
+- Mix question types: include at least one behavioural (STAR-style), one situational ("imagine you are…"), and one domain-specific question.
+- For PM/product roles specifically: cover product sense, prioritisation, metrics, stakeholder management, and cross-functional collaboration where relevant.
+- Questions should be open-ended and concise — 30 words or fewer each.
+- Do not ask questions that can be answered with yes/no or a single fact.
 
-Use the following context to generate the questions:
-${body.context}
+Also generate a short interview description (≤50 words, second-person "you will be asked…" style) to be shown to the interviewee. Do not repeat the objective verbatim.
 
-Moreover generate a 50 word or less second-person description about the interview to be shown to the user. It should be in the field 'description'.
-Do not use the exact objective in the description. Remember that some details are not be shown to the user. It should be a small description for the
-user to understand what the content of the interview would be. Make sure it is clear to the respondent who's taking the interview.
-
-The field 'questions' should take the format of an array of objects with the following key: question. 
-
-Strictly output only a JSON object with the keys 'questions' and 'description'.`;
+Output ONLY a valid JSON object with exactly two keys:
+{
+  "questions": [{ "question": string }, ...],
+  "description": string
+}`;
+};

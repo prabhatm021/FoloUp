@@ -20,12 +20,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useInterviews } from "@/contexts/interviews.context";
 import { CandidateStatus } from "@/lib/enum";
 import { formatTimestampToDateHHMM } from "@/lib/utils";
-import { ClientService } from "@/services/clients.service";
 import { InterviewService } from "@/services/interviews.service";
 import { ResponseService } from "@/services/responses.service";
 import type { Interview } from "@/types/interview";
 import type { Response } from "@/types/response";
-import { useOrganization } from "@clerk/nextjs";
 import { Eye, Filter, Palette, Pencil, Share2, UserIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { useState, useEffect, use } from "react";
@@ -53,14 +51,12 @@ function InterviewHome({ params, searchParams }: Props) {
   const [isSharePopupOpen, setIsSharePopupOpen] = useState(false);
   const router = useRouter();
   const [isActive, setIsActive] = useState<boolean>(true);
-  const [currentPlan, setCurrentPlan] = useState<string>("");
   const [isGeneratingInsights, setIsGeneratingInsights] = useState<boolean>(false);
   const [isViewed, setIsViewed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
   const [themeColor, setThemeColor] = useState<string>("#4F46E5");
   const [iconColor, seticonColor] = useState<string>("#4F46E5");
-  const { organization } = useOrganization();
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
 
   const seeInterviewPreviewPage = () => {
@@ -98,22 +94,6 @@ function InterviewHome({ params, searchParams }: Props) {
     }
   }, [getInterviewById, resolvedParams.interviewId, isGeneratingInsights, interview]);
 
-  useEffect(() => {
-    const fetchOrganizationData = async () => {
-      try {
-        if (organization?.id) {
-          const data = await ClientService.getOrganizationById(organization.id);
-          if (data?.plan) {
-            setCurrentPlan(data.plan);
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching organization data:", error);
-      }
-    };
-
-    fetchOrganizationData();
-  }, [organization]);
   useEffect(() => {
     const fetchResponses = async () => {
       try {
@@ -251,7 +231,7 @@ function InterviewHome({ params, searchParams }: Props) {
             />
 
             <div className="flex flex-row gap-3 my-auto">
-              <UserIcon className="my-auto" size={16} />: {String(responses?.length)}
+              <UserIcon className="my-auto" size={16} />: {responses?.length ?? 0}
             </div>
 
             <TooltipProvider>
@@ -330,27 +310,12 @@ function InterviewHome({ params, searchParams }: Props) {
             </TooltipProvider>
 
             <div className="inline-flex cursor-pointer">
-              {currentPlan === "free_trial_over" ? (
-                <>
-                  <span className="ms-3 my-auto text-sm">Inactive</span>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipContent className="bg-zinc-300" side="bottom" sideOffset={4}>
-                        Upgrade your plan to reactivate
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </>
-              ) : (
-                <>
-                  <span className="ms-3 my-auto text-sm">Active</span>
-                  <Switch
-                    checked={isActive}
-                    className={`ms-3 my-auto ${isActive ? "bg-indigo-600" : "bg-[#E6E7EB]"}`}
-                    onCheckedChange={handleToggle}
-                  />
-                </>
-              )}
+              <span className="ms-3 my-auto text-sm">Active</span>
+              <Switch
+                checked={isActive}
+                className={`ms-3 my-auto ${isActive ? "bg-indigo-600" : "bg-[#E6E7EB]"}`}
+                onCheckedChange={handleToggle}
+              />
             </div>
           </div>
           <div className="flex flex-row w-full p-2 h-[85%] gap-1 ">
@@ -500,6 +465,7 @@ function InterviewHome({ params, searchParams }: Props) {
           </div>
         </>
       )}
+      {showColorPicker && (
       <Modal open={showColorPicker} closeOnOutsideClick={false} onClose={applyColorChange}>
         <div className="w-[250px] p-3">
           <h3 className="text-lg font-semibold mb-4 text-center">Choose a Theme Color</h3>
@@ -515,6 +481,7 @@ function InterviewHome({ params, searchParams }: Props) {
           />
         </div>
       </Modal>
+      )}
       {isSharePopupOpen && (
         <SharePopup
           open={isSharePopupOpen}

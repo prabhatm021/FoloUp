@@ -1,7 +1,7 @@
+import { getLLMClient } from "@/lib/llm-client";
 import { logger } from "@/lib/logger";
 import { SYSTEM_PROMPT, generateQuestionsPrompt } from "@/lib/prompts/generate-questions";
 import { NextResponse } from "next/server";
-import { OpenAI } from "openai";
 
 export const maxDuration = 60;
 
@@ -9,15 +9,11 @@ export async function POST(req: Request) {
   logger.info("generate-interview-questions request received");
   const body = await req.json();
 
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    maxRetries: 5,
-    dangerouslyAllowBrowser: true,
-  });
+  const { client: openai, model } = getLLMClient();
 
   try {
     const baseCompletion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model,
       messages: [
         {
           role: "system",

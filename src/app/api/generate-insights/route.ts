@@ -1,9 +1,9 @@
+import { getLLMClient } from "@/lib/llm-client";
 import { logger } from "@/lib/logger";
 import { SYSTEM_PROMPT, createUserPrompt } from "@/lib/prompts/generate-insights";
 import { InterviewService } from "@/services/interviews.service";
 import { ResponseService } from "@/services/responses.service";
 import { NextResponse } from "next/server";
-import { OpenAI } from "openai";
 
 export async function POST(req: Request) {
   logger.info("generate-insights request received");
@@ -19,11 +19,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    maxRetries: 5,
-    dangerouslyAllowBrowser: true,
-  });
+  const { client: openai, model } = getLLMClient();
 
   try {
     const prompt = createUserPrompt(
@@ -34,7 +30,7 @@ export async function POST(req: Request) {
     );
 
     const baseCompletion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model,
       messages: [
         {
           role: "system",

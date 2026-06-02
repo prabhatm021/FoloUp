@@ -32,9 +32,13 @@ function CreateInterviewModal({ open, setOpen }: Props) {
   const [isUploaded, setIsUploaded] = useState(false);
   const [fileName, setFileName] = useState("");
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Need to check
+  // Advance to the questions view only once questions have actually been
+  // populated (either generated or pre-filled as empty slots for manual entry).
+  // Without the questions.length check the effect would fire as soon as
+  // setLoading(true) is called — before the API responds — showing a blank view.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
-    if (loading === true) {
+    if (loading === true && interviewData.questions.length > 0) {
       setLoading(false);
       setProceed(true);
     }
@@ -55,7 +59,7 @@ function CreateInterviewModal({ open, setOpen }: Props) {
   return (
     <>
       {loading ? (
-        <div className="w-[38rem] h-[35.3rem]">
+        <div className="w-[38rem] h-[35.3rem] flex items-center justify-center">
           <LoaderWithLogo />
         </div>
       ) : !proceed ? (

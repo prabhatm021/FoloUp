@@ -3,18 +3,16 @@ import styles from "./loader.module.css";
 
 function LoaderWithLogo() {
   return (
-    <div className="absolute -translate-x-1/2 -translate-y-1/2 top-1/2 left-1/2">
+    <div className="flex flex-col items-center justify-center w-full h-full">
       <Image
-        src="/loading-time.png"
-        alt="logo"
-        width={200}
-        height={200}
+        src="/Loading-Time.png"
+        alt="Generating…"
+        width={180}
+        height={180}
         className="object-cover object-center mx-auto mb-4"
       />
-      <div className="flex flex-row items-center mx-auto">
-        {/* <p>Let us take a .....</p> */}
-        <div className={styles.loader} />
-      </div>
+      <p className="text-sm text-gray-500 mb-3">Generating your questions…</p>
+      <div className={styles.loader} />
     </div>
   );
 }

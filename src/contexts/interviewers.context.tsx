@@ -2,7 +2,6 @@
 
 import { InterviewerService } from "@/services/interviewers.service";
 import type { Interviewer } from "@/types/interviewer";
-import { useClerk } from "@clerk/nextjs";
 import React, { useState, useContext, type ReactNode, useEffect } from "react";
 
 interface InterviewerContextProps {
@@ -27,13 +26,12 @@ interface InterviewerProviderProps {
 
 export function InterviewerProvider({ children }: InterviewerProviderProps) {
   const [interviewers, setInterviewers] = useState<Interviewer[]>([]);
-  const { user } = useClerk();
   const [interviewersLoading, setInterviewersLoading] = useState(true);
 
   const fetchInterviewers = async () => {
     try {
       setInterviewersLoading(true);
-      const response = await InterviewerService.getAllInterviewers(user?.id as string);
+      const response = await InterviewerService.getAllInterviewers();
       setInterviewers(response);
     } catch (error) {
       console.error(error);
@@ -46,13 +44,9 @@ export function InterviewerProvider({ children }: InterviewerProviderProps) {
     fetchInterviewers();
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
-    if (user?.id) {
-      fetchInterviewers();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+    fetchInterviewers();
+  }, []);
 
   return (
     <InterviewerContext.Provider
@@ -71,6 +65,5 @@ export function InterviewerProvider({ children }: InterviewerProviderProps) {
 
 export const useInterviewers = () => {
   const value = useContext(InterviewerContext);
-
   return value;
 };
