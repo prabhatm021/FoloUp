@@ -180,7 +180,7 @@ function Call({ interview }: InterviewProps) {
         DailyIframe.createCallObject({
           // Bundles served by our local FastAPI server at :7860/static/
           bundlePathOverride: `${PIPECAT_URL}/static`,
-        });
+        } as any);
 
       // Generate a fresh call ID
       const newCallId = crypto.randomUUID();
