@@ -309,6 +309,11 @@ async def run_pipeline(
             audio_in_sample_rate=16000,
             audio_out_sample_rate=AUDIO_OUT_SAMPLE_RATE,
         ),
+        # Kill the pipeline after 30s of silence/inactivity — prevents stale
+        # tasks from accumulating and corrupting the shared request handler
+        # state when new connections come in.
+        idle_timeout_secs=30,
+        cancel_on_idle_timeout=True,
     )
 
     @transport.event_handler("on_client_connected")
@@ -320,6 +325,12 @@ async def run_pipeline(
     async def on_disconnect(_transport, *args):
         logger.info(f"Client disconnected (call_id={call_id})")
         await task.queue_frame(EndFrame())
+        # Close the WebRTC connection so its pc_id is freed from the request
+        # handler registry — prevents stale tasks from blocking new connections.
+        try:
+            await webrtc_connection.close()
+        except Exception:
+            pass
 
     runner = PipelineRunner(handle_sigint=False)
     await runner.run(task)
