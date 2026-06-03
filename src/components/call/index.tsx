@@ -61,9 +61,13 @@ function Call({ interview }: InterviewProps) {
 
   // Pipecat client ref — stable across renders
   const clientRef = useRef<PipecatClient | null>(null);
-  // Audio element for bot voice playback (SmallWebRTCTransport does not
-  // auto-attach the remote audio track; the app must do it via onTrackStarted)
+  // Audio element for bot voice playback
   const botAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Tracks whether onConnected has fired — used to handle onTrackStarted arriving
+  // before OR after onConnected (order varies by browser/network conditions)
+  const isConnectedRef = useRef(false);
+  // Holds the bot's audio track until connected — prevents noise during loading
+  const botTrackRef = useRef<MediaStreamTrack | null>(null);
   // Full transcript accumulator for saving on end
   const transcriptRef = useRef<TranscriptEntry[]>([]);
   // When true, next onBotTranscript chunk starts a fresh caption (clears old one)
@@ -167,9 +171,11 @@ function Call({ interview }: InterviewProps) {
   const startConversation = async () => {
     setLoading(true);
     try {
-      // Pre-initialise Daily.co call object with local bundle so the browser
-      // never needs to reach c.daily.co (SmallWebRTCTransport uses daily-js
-      // internally for mic/camera management).
+      // Re-use any existing Daily call object rather than destroying it.
+      // destroy() tears down internal Daily state that SmallWebRTCTransport
+      // depends on, causing an immediate ICE→DTLS failure on the next attempt.
+      // SmallWebRTCTransport creates fresh ICE/DTLS state per connect() call,
+      // so reusing the call object here is safe.
       const DailyIframe = (await import("@daily-co/daily-js")).default;
       DailyIframe.getCallInstance() ??
         DailyIframe.createCallObject({
@@ -219,25 +225,34 @@ function Call({ interview }: InterviewProps) {
           onConnected: () => {
             console.log("[Pipecat] Transport connected — starting session");
             callStartTimeRef.current = Date.now();
+            isConnectedRef.current = true;
             setIsCalling(true);
             setIsStarted(true);
             setLoading(false);
+            // onTrackStarted may have already fired — attach track if so
+            const track = botTrackRef.current;
+            if (track) {
+              console.log("[Pipecat] Attaching bot track on connect");
+              let el = botAudioRef.current;
+              if (!el) { el = new Audio(); el.autoplay = true; botAudioRef.current = el; }
+              el.srcObject = new MediaStream([track]);
+              el.play().catch((e) => console.warn("[Pipecat] audio.play() blocked:", e));
+            }
           },
-          // SmallWebRTCTransport does not auto-play remote tracks — we must
-          // grab the bot's audio track here and attach it to an audio element.
+          // onTrackStarted fires before OR after onConnected depending on Chrome/network.
+          // If already connected → attach immediately. Otherwise save for onConnected.
           onTrackStarted: (track: MediaStreamTrack) => {
             if (track.kind !== "audio") return;
-            console.log("[Pipecat] Bot audio track started — attaching to <audio>");
-            let el = botAudioRef.current;
-            if (!el) {
-              el = new Audio();
-              el.autoplay = true;
-              botAudioRef.current = el;
+            botTrackRef.current = track;
+            if (isConnectedRef.current) {
+              console.log("[Pipecat] Bot audio track arrived after connect — attaching now");
+              let el = botAudioRef.current;
+              if (!el) { el = new Audio(); el.autoplay = true; botAudioRef.current = el; }
+              el.srcObject = new MediaStream([track]);
+              el.play().catch((e) => console.warn("[Pipecat] audio.play() blocked:", e));
+            } else {
+              console.log("[Pipecat] Bot audio track received — holding until connected");
             }
-            el.srcObject = new MediaStream([track]);
-            el.play().catch((e) =>
-              console.warn("[Pipecat] audio.play() blocked:", e)
-            );
           },
           onBotReady: () => {
             // Phase 5: real LLM will fire this; no-op for Phase 3 EchoInterviewer
@@ -245,6 +260,8 @@ function Call({ interview }: InterviewProps) {
           },
           onDisconnected: () => {
             console.log("[Pipecat] Disconnected");
+            isConnectedRef.current = false;
+            botTrackRef.current = null;
             setIsCalling(false);
             setIsEnded(true);
           },
@@ -390,6 +407,11 @@ function Call({ interview }: InterviewProps) {
                     {"\n"}Ensure your volume is up and grant microphone access when prompted.
                     Additionally, please make sure you are in a quiet environment.
                   </p>
+                  {typeof navigator !== "undefined" && navigator.userAgent.includes("Firefox") && (
+                    <div className="mt-3 p-2 bg-amber-50 border border-amber-300 rounded text-xs text-amber-800">
+                      ⚠️ <span className="font-semibold">Firefox detected.</span> The microphone may not work due to a known Firefox + WebRTC compatibility issue. For the best experience, please use <span className="font-semibold">Chrome or Chromium</span>.
+                    </div>
+                  )}
                 </div>
 
                 <div className="w-[80%] flex flex-row mx-auto justify-center items-center align-middle">
