@@ -1,25 +1,24 @@
-export const SYSTEM_PROMPT = `You are an expert in analyzing communication skills from interview transcripts. Your task is to:
-1. Analyze the communication skills demonstrated in the transcript
-2. Identify specific quotes that support your analysis
-3. Provide a detailed breakdown of strengths and areas for improvement`;
+export const SYSTEM_PROMPT =
+  "You are an expert interview coach who gives honest, specific, actionable feedback on communication. Output only valid JSON matching the requested schema.";
 
 export const getCommunicationAnalysisPrompt = (
   transcript: string,
-) => `Analyze the communication skills demonstrated in the following interview transcript:
+) => `Analyse the communication skills shown in this interview transcript and provide coaching feedback.
 
-Transcript: ${transcript}
+Transcript:
+${transcript}
 
-Please provide your analysis in the following JSON format:
+Output valid JSON:
 {
-  "communicationScore": number, // Score from 0-10 based on the standard communication scoring system
-  "overallFeedback": string,   // 2-3 sentence summary of communication skills
-  "supportingQuotes": [        // Array of relevant quotes with analysis
+  "communicationScore": number,       // 0–10: 10=fluent & precise, 7=effective with minor slips, 5=basic, 1=no response
+  "overallFeedback": string,          // 2–3 sentences: what worked and one specific thing to improve
+  "supportingQuotes": [               // 2–4 quotes from the transcript with coaching notes
     {
-      "quote": string,         // The exact quote from the transcript
-      "analysis": string,      // Brief analysis of what this quote demonstrates about communication skills
-      "type": string          // Either "strength" or "improvement_area"
+      "quote": string,                // exact quote from the transcript
+      "analysis": string,             // what this reveals about their communication
+      "type": "strength" | "improvement_area"
     }
   ],
-  "strengths": [string],       // List of communication strengths demonstrated
-  "improvementAreas": [string] // List of areas where communication could be improved
+  "strengths": [string],              // 2–3 specific communication strengths shown
+  "improvementAreas": [string]        // 2–3 concrete areas to work on
 }`;
