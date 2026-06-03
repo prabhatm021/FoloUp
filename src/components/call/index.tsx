@@ -23,7 +23,7 @@ import {
   type TranscriptData,
 } from "@pipecat-ai/client-js";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
-import { AlarmClockIcon, ArrowUpRightSquareIcon, CheckCircleIcon, XCircleIcon } from "lucide-react";
+import { AlarmClockIcon, ArrowUpRightSquareIcon, CheckCircleIcon, PauseCircleIcon, PlayCircleIcon, XCircleIcon } from "lucide-react";
 import Image from "next/image";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
@@ -58,6 +58,8 @@ function Call({ interview }: InterviewProps) {
   const [interviewTimeDuration, setInterviewTimeDuration] = useState<string>("1");
   const [time, setTime] = useState(0);
   const [currentTimeDuration, setCurrentTimeDuration] = useState<string>("0");
+  const [isPaused, setIsPaused] = useState(false);
+  const [pauseSeconds, setPauseSeconds] = useState(0);
 
   // Pipecat client ref — stable across renders
   const clientRef = useRef<PipecatClient | null>(null);
@@ -101,6 +103,27 @@ function Call({ interview }: InterviewProps) {
     }
     return () => clearInterval(intervalId);
   }, [isCalling, time, currentTimeDuration]);
+
+  // ── Pause stopwatch ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isPaused) { setPauseSeconds(0); return; }
+    const id = setInterval(() => setPauseSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [isPaused]);
+
+  // ── Toggle pause ─────────────────────────────────────────────────────────────
+  const togglePause = useCallback(() => {
+    if (!clientRef.current) return;
+    const next = !isPaused;
+    // Mute/unmute the microphone — VAD+STT on server goes silent during pause
+    clientRef.current.enableMic(!next);
+    // Pause/resume bot audio so the interviewer stops mid-sentence if needed
+    if (botAudioRef.current) {
+      if (next) botAudioRef.current.pause();
+      else botAudioRef.current.play().catch(() => {});
+    }
+    setIsPaused(next);
+  }, [isPaused]);
 
   // ── Interviewer image + name ────────────────────────────────────────────────
   useEffect(() => {
@@ -346,7 +369,7 @@ function Call({ interview }: InterviewProps) {
   return (
     <div className="flex justify-center items-center min-h-screen bg-gray-100">
       <div className="bg-white rounded-md md:w-[80%] w-[90%]">
-        <Card className="h-[88vh] rounded-lg border-2 border-b-4 border-r-4 border-black text-xl font-bold transition-all md:block dark:border-white">
+        <Card className="relative h-[88vh] rounded-lg border-2 border-b-4 border-r-4 border-black text-xl font-bold transition-all md:block dark:border-white">
           <div>
             {/* Progress bar */}
             <div className="m-4 h-[15px] rounded-lg border-[1px] border-black">
@@ -457,6 +480,28 @@ function Call({ interview }: InterviewProps) {
               </div>
             )}
 
+            {/* ── Pause overlay ─────────────────────────────────────────── */}
+            {isStarted && !isEnded && isPaused && (
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm rounded-lg">
+                <PauseCircleIcon className="h-14 w-14 text-indigo-500 mb-4" />
+                <p className="text-xl font-bold text-gray-800 mb-1">Interview Paused</p>
+                <p className="text-sm text-gray-500 mb-6">Take your time — mic and audio are off</p>
+                {/* Stopwatch */}
+                <div className="text-5xl font-mono font-semibold text-indigo-600 mb-8 tabular-nums">
+                  {String(Math.floor(pauseSeconds / 60)).padStart(2, "0")}
+                  :
+                  {String(pauseSeconds % 60).padStart(2, "0")}
+                </div>
+                <Button
+                  className="px-8 h-11 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2"
+                  onClick={togglePause}
+                >
+                  <PlayCircleIcon className="h-5 w-5" />
+                  Resume Interview
+                </Button>
+              </div>
+            )}
+
             {/* ── Live call screen ──────────────────────────────────────── */}
             {isStarted && !isEnded && (
               <div className="flex flex-row p-2 grow">
@@ -543,17 +588,35 @@ function Call({ interview }: InterviewProps) {
               </div>
             )}
 
-            {/* ── End call button ───────────────────────────────────────── */}
+            {/* ── Bottom action bar (Pause + End) ──────────────────────── */}
             {isStarted && !isEnded && (
-              <div className="items-center p-2">
+              <div className="flex flex-row justify-center items-center gap-3 p-2">
+                {/* Pause / Resume button */}
+                <Button
+                  className={`h-10 rounded-lg flex flex-row items-center gap-2 border ${
+                    isPaused
+                      ? "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
+                      : "bg-white text-black border-indigo-600 hover:bg-indigo-50"
+                  }`}
+                  onClick={togglePause}
+                  disabled={Loading}
+                >
+                  {isPaused ? (
+                    <><PlayCircleIcon className="h-5 w-5" /> Resume</>
+                  ) : (
+                    <><PauseCircleIcon className="h-5 w-5" /> Pause</>
+                  )}
+                </Button>
+
+                {/* End interview */}
                 <AlertDialog>
-                  <AlertDialogTrigger asChild className="w-full">
+                  <AlertDialogTrigger asChild>
                     <Button
-                      className="bg-white text-black border border-indigo-600 h-10 mx-auto flex flex-row justify-center mb-8"
+                      className="bg-white text-black border border-indigo-600 h-10 flex flex-row items-center gap-2"
                       disabled={Loading}
                     >
-                      End Interview{" "}
-                      <XCircleIcon className="h-[1.5rem] ml-2 w-[1.5rem] rotate-0 scale-100 dark:-rotate-90 dark:scale-0 text-red" />
+                      End Interview
+                      <XCircleIcon className="h-5 w-5 text-red-500" />
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
