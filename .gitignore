@@ -40,3 +40,14 @@ next-env.d.ts
 .idea/
 
 supabase/.temp/
+
+# voice-server (Python / Pipecat)
+voice-server/.env
+voice-server/.env.local
+voice-server/venv/
+voice-server/.venv/
+voice-server/__pycache__/
+voice-server/*.py[cod]
+voice-server/voices/*.onnx
+voice-server/voices/*.onnx.json
+voice-server/insta-env/

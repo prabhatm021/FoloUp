@@ -1,0 +1,21 @@
+# ── Core server ────────────────────────────────────────────────────────────────
+fastapi==0.136.3
+uvicorn==0.48.0
+python-dotenv==1.2.2
+
+# ── Pipecat (WebRTC + pipeline) ────────────────────────────────────────────────
+pipecat-ai[silero,smallwebrtc,groq]==1.2.1
+aiortc==1.14.0
+
+# ── Local STT — faster-whisper (only needed if STT_PROVIDER=local, requires CUDA GPU)
+faster-whisper==1.2.1
+ctranslate2==4.7.1
+
+# ── CUDA runtime libs (only needed if STT_PROVIDER=local, install on GPU machine)
+# nvidia-cublas-cu12
+# nvidia-cudnn-cu12
+# Uncomment the two lines above OR install via:  pip install faster-whisper[cuda]
+
+# ── Local TTS — Piper (only needed if TTS_PROVIDER=local, CPU-only)
+piper-tts==1.4.2
+onnxruntime==1.24.4
