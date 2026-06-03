@@ -63,7 +63,8 @@ function Call({ interview }: InterviewProps) {
 
   // Pipecat client ref — stable across renders
   const clientRef = useRef<PipecatClient | null>(null);
-  // Audio element for bot voice playback
+  // Audio element for bot voice playback — rendered in JSX so Chrome's
+  // autoplay policy allows play() even seconds after the user's last click
   const botAudioRef = useRef<HTMLAudioElement | null>(null);
   // Tracks whether onConnected has fired — used to handle onTrackStarted arriving
   // before OR after onConnected (order varies by browser/network conditions)
@@ -256,12 +257,9 @@ function Call({ interview }: InterviewProps) {
             setLoading(false);
             // onTrackStarted may have already fired — attach track if so
             const track = botTrackRef.current;
-            if (track) {
+            if (track && botAudioRef.current) {
               console.log("[Pipecat] Attaching bot track on connect");
-              let el = botAudioRef.current;
-              if (!el) { el = new Audio(); el.autoplay = true; botAudioRef.current = el; }
-              el.srcObject = new MediaStream([track]);
-              el.play().catch((e) => console.warn("[Pipecat] audio.play() blocked:", e));
+              botAudioRef.current.srcObject = new MediaStream([track]);
             }
           },
           // onTrackStarted fires before OR after onConnected depending on Chrome/network.
@@ -269,12 +267,9 @@ function Call({ interview }: InterviewProps) {
           onTrackStarted: (track: MediaStreamTrack) => {
             if (track.kind !== "audio") return;
             botTrackRef.current = track;
-            if (isConnectedRef.current) {
-              console.log("[Pipecat] Bot audio track arrived after connect — attaching now");
-              let el = botAudioRef.current;
-              if (!el) { el = new Audio(); el.autoplay = true; botAudioRef.current = el; }
-              el.srcObject = new MediaStream([track]);
-              el.play().catch((e) => console.warn("[Pipecat] audio.play() blocked:", e));
+            if (isConnectedRef.current && botAudioRef.current) {
+              console.log("[Pipecat] Bot audio track arrived — attaching to DOM element");
+              botAudioRef.current.srcObject = new MediaStream([track]);
             } else {
               console.log("[Pipecat] Bot audio track received — holding until connected");
             }
@@ -362,7 +357,6 @@ function Call({ interview }: InterviewProps) {
       clientRef.current?.disconnect().catch(() => {});
       if (botAudioRef.current) {
         botAudioRef.current.srcObject = null;
-        botAudioRef.current = null;
       }
     };
   }, []);
@@ -409,6 +403,11 @@ function Call({ interview }: InterviewProps) {
                 </div>
               )}
             </CardHeader>
+
+            {/* Hidden bot audio element — must be in the DOM so Chrome's
+                autoplay policy allows play() without a fresh user gesture */}
+            {/* biome-ignore lint/a11y/useMediaCaption: bot voice, no captions needed */}
+            <audio ref={botAudioRef} autoPlay playsInline style={{ display: "none" }} />
 
             {/* ── Pre-start screen ─────────────────────────────────────── */}
             {!isStarted && !isEnded && (
@@ -582,6 +581,8 @@ function Call({ interview }: InterviewProps) {
                   >
                     {lastUserResponse ? (
                       <p>{lastUserResponse}</p>
+                    ) : activeTurn === "user" ? (
+                      <p className="italic text-indigo-400 text-sm animate-pulse">Listening…</p>
                     ) : (
                       <p className="italic text-gray-400 text-sm">Your speech will appear here…</p>
                     )}
