@@ -1,6 +1,5 @@
 "use client";
 
-import { FeedbackForm } from "@/components/call/feedbackForm";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,11 +13,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useResponses } from "@/contexts/responses.context";
 import { isLightColor } from "@/lib/utils";
-import { FeedbackService } from "@/services/feedback.service";
 import { InterviewerService } from "@/services/interviewers.service";
 import { ResponseService } from "@/services/responses.service";
 import type { Interview } from "@/types/interview";
-import type { FeedbackData } from "@/types/response";
 import {
   PipecatClient,
   RTVIEvent,
@@ -56,8 +53,6 @@ function Call({ interview }: InterviewProps) {
   const [isEnded, setIsEnded] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
   const [callId, setCallId] = useState<string>("");
-  const [isFeedbackSubmitted, setIsFeedbackSubmitted] = useState(false);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [interviewerImg, setInterviewerImg] = useState("");
   const [interviewerName, setInterviewerName] = useState("");
   const [interviewTimeDuration, setInterviewTimeDuration] = useState<string>("1");
@@ -79,25 +74,6 @@ function Call({ interview }: InterviewProps) {
   const callStartTimeRef = useRef<number>(0);
 
   const lastUserResponseRef = useRef<HTMLDivElement | null>(null);
-
-  const handleFeedbackSubmit = async (formData: Omit<FeedbackData, "interview_id">) => {
-    try {
-      const result = await FeedbackService.submitFeedback({
-        ...formData,
-        interview_id: interview.id,
-      });
-      if (result) {
-        toast.success("Thank you for your feedback!");
-        setIsFeedbackSubmitted(true);
-        setIsDialogOpen(false);
-      } else {
-        toast.error("Failed to submit feedback. Please try again.");
-      }
-    } catch (error) {
-      console.error("Error submitting feedback:", error);
-      toast.error("An error occurred. Please try again later.");
-    }
-  };
 
   // Auto-scroll user transcript box
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on content change
@@ -143,10 +119,22 @@ function Call({ interview }: InterviewProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: run only when isEnded flips
   useEffect(() => {
     if (isEnded && callId) {
-      // Calculate duration in seconds from call start
+      // Save the last bot turn (it never gets a subsequent onBotStartedSpeaking)
+      const lastBotTurn = currentBotTurnRef.current.trim();
+      if (lastBotTurn) {
+        transcriptRef.current = [
+          ...transcriptRef.current,
+          { role: "bot", content: lastBotTurn },
+        ];
+        currentBotTurnRef.current = "";
+      }
+
       const durationSecs = callStartTimeRef.current
         ? Math.round((Date.now() - callStartTimeRef.current) / 1000)
         : 0;
+
+      // Save transcript + duration, then kick off analytics in background
+      // so the dashboard doesn't need a manual click to trigger Groq analysis.
       ResponseService.saveResponse(
         {
           is_ended: true,
@@ -154,7 +142,14 @@ function Call({ interview }: InterviewProps) {
           details: { transcript: transcriptRef.current },
         },
         callId,
-      ).catch(console.error);
+      ).then(() => {
+        // Pre-warm analytics — fire and forget
+        fetch("/api/get-call", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: callId }),
+        }).catch(() => {});
+      }).catch(console.error);
     }
   }, [isEnded]);
 
@@ -255,23 +250,25 @@ function Call({ interview }: InterviewProps) {
           },
           onBotStartedSpeaking: () => {
             setActiveTurn("agent");
-            // Reset current turn accumulator so we capture only this turn
-            currentBotTurnRef.current = "";
-            // Mark that the display caption should start fresh on next chunk
-            botNewTurnRef.current = true;
-          },
-          onBotStoppedSpeaking: () => {
-            setActiveTurn("user");
-            // Save the completed bot turn using the dedicated ref (not state)
-            // to avoid any React batching / stale-capture issues.
-            const turnText = currentBotTurnRef.current.trim();
-            if (turnText) {
+            // Save the PREVIOUS turn's accumulated text before resetting.
+            // By the time the next turn starts, all onBotTranscript chunks
+            // from the previous turn have arrived — so this is the safe
+            // moment to commit the previous turn to the transcript.
+            const prevTurn = currentBotTurnRef.current.trim();
+            if (prevTurn) {
               transcriptRef.current = [
                 ...transcriptRef.current,
-                { role: "bot", content: turnText },
+                { role: "bot", content: prevTurn },
               ];
             }
             currentBotTurnRef.current = "";
+            botNewTurnRef.current = true;
+          },
+          onBotStoppedSpeaking: () => {
+            // Just update the speaking indicator — don't save here.
+            // Saving happens in the NEXT onBotStartedSpeaking (or on call end)
+            // because onBotTranscript chunks can arrive AFTER this event fires.
+            setActiveTurn("user");
           },
           onUserTranscript: (data: TranscriptData) => {
             if (data.text.trim()) {
@@ -574,21 +571,6 @@ function Call({ interview }: InterviewProps) {
                     <p className="text-center">{"\n"}You can close this tab now.</p>
                   </div>
 
-                  {isStarted && !isFeedbackSubmitted && (
-                    <AlertDialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                      <AlertDialogTrigger asChild className="w-full flex justify-center">
-                        <Button
-                          className="bg-indigo-600 text-white h-10 mt-4 mb-4"
-                          onClick={() => setIsDialogOpen(true)}
-                        >
-                          Provide Feedback
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <FeedbackForm email="local@localhost" onSubmit={handleFeedbackSubmit} />
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
                 </div>
               </div>
             )}
