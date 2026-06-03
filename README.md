@@ -36,6 +36,7 @@ Browser (Next.js)  ←→  Voice Server (Python/Pipecat)
 - Python 3.10+ (for the voice server)
 - [Supabase CLI](https://supabase.com/docs/guides/cli) (`npm install -g supabase`)
 - A free [Groq API key](https://console.groq.com) — used for the LLM (and optionally for cloud STT/TTS)
+- **Chrome or Chromium** — Firefox is not supported for voice interviews (the WebRTC transport uses Daily.js which has known mic issues in Firefox)
 
 ---
 
