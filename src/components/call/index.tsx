@@ -117,10 +117,12 @@ function Call({ interview }: InterviewProps) {
     const next = !isPaused;
     // Mute/unmute the microphone — VAD+STT on server goes silent during pause
     clientRef.current.enableMic(!next);
-    // Pause/resume bot audio so the interviewer stops mid-sentence if needed
+    // Mute/unmute bot audio — intentionally NOT pause()/play() because pausing
+    // a MediaStream element drops Chrome's AEC reference signal, causing echo
+    // on resume and unreliable play() restart. Muting keeps the stream alive
+    // internally so AEC stays calibrated; the user just hears nothing.
     if (botAudioRef.current) {
-      if (next) botAudioRef.current.pause();
-      else botAudioRef.current.play().catch(() => {});
+      botAudioRef.current.muted = next;
     }
     setIsPaused(next);
   }, [isPaused]);
