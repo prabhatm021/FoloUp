@@ -1,5 +1,5 @@
 export const SYSTEM_PROMPT =
-  "You are an expert in analyzing interview transcripts. You must only use the main questions provided and not generate or infer additional questions.";
+  "You are an expert in analyzing interview transcripts. Output only valid JSON matching the requested schema — no extra text.";
 
 export const getInterviewAnalyticsPrompt = (
   interviewTranscript: string,
@@ -67,3 +67,49 @@ Ensure the output is in valid JSON format with the following structure:
 }
 
 IMPORTANT: Only use the main questions provided. Do not generate or infer additional questions such as follow-up questions.`;
+
+// ── Adaptive interview analytics (no pre-set questions) ──────────────────────
+export const getAdaptiveAnalyticsPrompt = (interviewTranscript: string) =>
+  `Analyse this adaptive interview transcript and provide structured feedback.
+In an adaptive interview the interviewer generates questions based on the conversation — there is no fixed question list.
+
+###
+Transcript:
+${interviewTranscript}
+###
+
+Generate the following analytics in JSON format:
+
+1. Overall Score (0-100) and Overall Feedback (60 words) considering:
+   communication, confidence, clarity, depth of knowledge, relevance of answers, problem-solving, examples used, adaptability.
+
+2. Communication Skills: Score (0-10) and Feedback (60 words) using this scale:
+   10=fully fluent, 9=near-fluent with rare errors, 8=operational with minor errors,
+   7=effective despite some inaccuracies, 6=partial command, 5=basic/familiar topics only,
+   4=frequent breakdowns, 3=great difficulty, 2=isolated words only, 1=did not answer.
+
+3. Question Summaries: Extract each distinct question the Interviewer asked from the transcript.
+   For each question provide a brief summary of the candidate's answer.
+   If the candidate did not answer, write "Not Answered".
+   Output as an array even if only one question was asked.
+
+4. Soft Skills Summary (10-15 words): confidence, leadership, adaptability, critical thinking.
+
+5. Candidate Sentiment: overall emotional tone. Exactly one of: "Positive", "Neutral", "Negative".
+
+6. Call Summary: 2-3 sentence plain English summary — what went well and what to improve.
+
+7. Call Completion Rating: did the candidate engage meaningfully with the interview?
+   "Complete" = answered most questions well, "Partial" = answered some, "Incomplete" = answered little or nothing.
+
+Output valid JSON only:
+{
+  "overallScore": number,
+  "overallFeedback": string,
+  "communication": { "score": number, "feedback": string },
+  "questionSummaries": [{ "question": string, "summary": string }],
+  "softSkillSummary": string,
+  "userSentiment": "Positive" | "Neutral" | "Negative",
+  "callSummary": string,
+  "callCompletionRating": "Complete" | "Partial" | "Incomplete"
+}`;
