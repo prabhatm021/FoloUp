@@ -309,11 +309,11 @@ async def run_pipeline(
             audio_in_sample_rate=16000,
             audio_out_sample_rate=AUDIO_OUT_SAMPLE_RATE,
         ),
-        # Kill the pipeline after 30s of silence/inactivity — prevents stale
-        # tasks from accumulating and corrupting the shared request handler
-        # state when new connections come in.
-        idle_timeout_secs=30,
-        cancel_on_idle_timeout=True,
+        # No idle timeout — the disconnect handler + webrtc_connection.close()
+        # cleans up properly. A short idle_timeout kills the pipeline before
+        # the bot can speak (pipecat counts "idle" from pipeline start, not
+        # from when the user goes silent, so the bot's opening turn trips it).
+        idle_timeout_secs=None,
     )
 
     @transport.event_handler("on_client_connected")
