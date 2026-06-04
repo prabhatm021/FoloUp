@@ -325,11 +325,16 @@ function Call({ interview }: InterviewProps) {
             setActiveTurn("user");
           },
           onUserStartedSpeaking: () => {
-            // Clear the previous user caption the moment VAD detects speech —
-            // before Whisper returns anything. Without this, the new partial
-            // transcript arrives and appends to / blends with the previous
-            // turn's text, especially during bot interruptions.
+            // VAD detected speech — clear BOTH caption boxes immediately.
+            // Bot captions must clear here because onBotTranscript fires as
+            // the LLM generates (before TTS starts), so by the time
+            // onBotStartedSpeaking would normally clear them, the first
+            // tokens of the new turn have already appended to the old text.
+            // Clearing on user-started-speaking guarantees a clean slate
+            // before any new bot tokens arrive.
             setLastUserResponse("");
+            setLastInterviewerResponse("");
+            botNewTurnRef.current = true;
             setActiveTurn("user");
           },
           onUserTranscript: (data: TranscriptData) => {
