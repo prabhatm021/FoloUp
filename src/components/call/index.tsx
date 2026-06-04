@@ -324,6 +324,14 @@ function Call({ interview }: InterviewProps) {
             // because onBotTranscript chunks can arrive AFTER this event fires.
             setActiveTurn("user");
           },
+          onUserStartedSpeaking: () => {
+            // Clear the previous user caption the moment VAD detects speech —
+            // before Whisper returns anything. Without this, the new partial
+            // transcript arrives and appends to / blends with the previous
+            // turn's text, especially during bot interruptions.
+            setLastUserResponse("");
+            setActiveTurn("user");
+          },
           onUserTranscript: (data: TranscriptData) => {
             if (data.text.trim()) {
               // Show both partial and final transcripts for a live feel.
