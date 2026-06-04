@@ -133,6 +133,15 @@ function Call({ interview }: InterviewProps) {
     // Mute bot audio output while paused (keep stream alive for AEC — don't pause())
     if (botAudioRef.current) botAudioRef.current.muted = next;
 
+    // On resume: clear stale bot captions so the display starts fresh.
+    // Without this, whatever the bot said before/during pause stays on screen
+    // and new words just append to it as one unbroken wall of text.
+    if (!next) {
+      setLastInterviewerResponse("");
+      setLastUserResponse("");
+      botNewTurnRef.current = true;
+    }
+
     setIsPaused(next);
   }, [isPaused]);
 

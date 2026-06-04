@@ -205,8 +205,24 @@ async def lifespan(app: FastAPI):
 
     if STT_PROVIDER == "local":
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: _make_local_stt()._load())
-        logger.info("[STT] Local Whisper model warmed")
+
+        def _warm_whisper():
+            import numpy as np
+            stt = _make_local_stt()
+            stt._load()
+            logger.info("[STT] Whisper model loaded — running dummy inference to compile CUDA kernels...")
+            # A cold faster-whisper inference compiles CUDA kernels on first run,
+            # adding 2-4s latency to the user's first spoken word. Running a
+            # silent dummy inference here pre-compiles the kernels so the first
+            # real transcription is instant.
+            try:
+                silence = np.zeros(16000, dtype=np.float32)  # 1s of silence at 16kHz
+                list(stt._model.transcribe(silence, language="en"))
+                logger.info("[STT] CUDA kernels compiled — first transcription will be instant")
+            except Exception as e:
+                logger.warning(f"[STT] Dummy inference failed (non-fatal): {e}")
+
+        await loop.run_in_executor(None, _warm_whisper)
     else:
         logger.info("[STT] Groq cloud Whisper — no warm-up needed")
 
