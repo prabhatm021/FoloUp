@@ -77,6 +77,8 @@ function Call({ interview }: InterviewProps) {
   const botSpeakingRef = useRef(false);
   // Tokens that arrived before TTS started — flushed to display on onBotStartedSpeaking
   const pendingBotTokensRef = useRef<string[]>([]);
+  // When paused mid-bot-speech, delay audio re-attach until bot finishes
+  const pendingAudioResumeRef = useRef(false);
   // Accumulates only the current bot turn text — used for reliable transcript saving
   const currentBotTurnRef = useRef("");
   // Tracks call start time so we can save duration on end
@@ -132,24 +134,25 @@ function Call({ interview }: InterviewProps) {
     const micTrack = clientRef.current.tracks()?.local?.audio as MediaStreamTrack | undefined;
     if (micTrack) micTrack.enabled = !next;
 
-    if (botAudioRef.current) {
-      if (next) {
-        // Pause: mute output (keep stream alive so AEC stays calibrated)
-        botAudioRef.current.muted = true;
-      } else {
-        // Resume: detach and re-attach the track so buffered TTS audio
-        // that accumulated while muted doesn't play on unmute.
-        // AEC is fine — we immediately re-attach the same live track.
+    if (next) {
+      // PAUSE — detach audio immediately so bot stops mid-sentence.
+      // srcObject=null discards the live stream; no audio plays at all.
+      if (botAudioRef.current) botAudioRef.current.srcObject = null;
+    } else {
+      // RESUME — only re-attach audio if the server has already finished
+      // its current TTS turn. If the bot is still speaking (server kept
+      // going while we were paused), we set a flag and re-attach in
+      // onBotStoppedSpeaking once the server is done. This prevents
+      // hearing the leftover tail of whatever the bot was saying.
+      if (!botSpeakingRef.current) {
         const track = botTrackRef.current;
-        botAudioRef.current.srcObject = null;
-        if (track) botAudioRef.current.srcObject = new MediaStream([track]);
-        botAudioRef.current.muted = false;
+        if (track && botAudioRef.current) {
+          botAudioRef.current.srcObject = new MediaStream([track]);
+        }
+      } else {
+        pendingAudioResumeRef.current = true;
       }
-    }
-
-    // On resume: clear only the user caption (stale partial transcripts).
-    // Bot captions stay visible — the question shouldn't vanish on resume.
-    if (!next) {
+      // Clear stale user caption only
       setLastUserResponse("");
     }
 
@@ -312,6 +315,7 @@ function Call({ interview }: InterviewProps) {
             botTrackRef.current = null;
             botSpeakingRef.current = false;
             pendingBotTokensRef.current = [];
+            pendingAudioResumeRef.current = false;
             setIsCalling(false);
             setIsEnded(true);
           },
@@ -338,6 +342,16 @@ function Call({ interview }: InterviewProps) {
           onBotStoppedSpeaking: () => {
             botSpeakingRef.current = false;
             setActiveTurn("user");
+            // If we paused while the bot was mid-speech, re-attach audio now
+            // that the server has finished. The bot is silent so re-attaching
+            // here plays nothing — fresh audio starts on the next bot turn.
+            if (pendingAudioResumeRef.current) {
+              pendingAudioResumeRef.current = false;
+              const track = botTrackRef.current;
+              if (track && botAudioRef.current) {
+                botAudioRef.current.srcObject = new MediaStream([track]);
+              }
+            }
           },
           onUserStartedSpeaking: () => {
             // Clear only the user caption — bot's last question stays visible
