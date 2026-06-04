@@ -130,16 +130,25 @@ function Call({ interview }: InterviewProps) {
     const micTrack = clientRef.current.tracks()?.local?.audio as MediaStreamTrack | undefined;
     if (micTrack) micTrack.enabled = !next;
 
-    // Mute bot audio output while paused (keep stream alive for AEC — don't pause())
-    if (botAudioRef.current) botAudioRef.current.muted = next;
+    if (botAudioRef.current) {
+      if (next) {
+        // Pause: mute output (keep stream alive so AEC stays calibrated)
+        botAudioRef.current.muted = true;
+      } else {
+        // Resume: detach and re-attach the track so buffered TTS audio
+        // that accumulated while muted doesn't play on unmute.
+        // AEC is fine — we immediately re-attach the same live track.
+        const track = botTrackRef.current;
+        botAudioRef.current.srcObject = null;
+        if (track) botAudioRef.current.srcObject = new MediaStream([track]);
+        botAudioRef.current.muted = false;
+      }
+    }
 
-    // On resume: clear stale bot captions so the display starts fresh.
-    // Without this, whatever the bot said before/during pause stays on screen
-    // and new words just append to it as one unbroken wall of text.
+    // On resume: clear only the user caption (stale partial transcripts).
+    // Bot captions stay visible — the question shouldn't vanish on resume.
     if (!next) {
-      setLastInterviewerResponse("");
       setLastUserResponse("");
-      botNewTurnRef.current = true;
     }
 
     setIsPaused(next);
@@ -304,10 +313,7 @@ function Call({ interview }: InterviewProps) {
           },
           onBotStartedSpeaking: () => {
             setActiveTurn("agent");
-            // Save the PREVIOUS turn's accumulated text before resetting.
-            // By the time the next turn starts, all onBotTranscript chunks
-            // from the previous turn have arrived — so this is the safe
-            // moment to commit the previous turn to the transcript.
+            // Save previous turn to transcript
             const prevTurn = currentBotTurnRef.current.trim();
             if (prevTurn) {
               transcriptRef.current = [
@@ -316,6 +322,11 @@ function Call({ interview }: InterviewProps) {
               ];
             }
             currentBotTurnRef.current = "";
+            // Clear bot captions HERE — this is the only correct place.
+            // onBotTranscript fires as LLM generates (before TTS starts),
+            // so early tokens may already be on screen. Clearing here gives
+            // a clean start for the visible portion of the new response.
+            setLastInterviewerResponse("");
             botNewTurnRef.current = true;
           },
           onBotStoppedSpeaking: () => {
@@ -325,16 +336,9 @@ function Call({ interview }: InterviewProps) {
             setActiveTurn("user");
           },
           onUserStartedSpeaking: () => {
-            // VAD detected speech — clear BOTH caption boxes immediately.
-            // Bot captions must clear here because onBotTranscript fires as
-            // the LLM generates (before TTS starts), so by the time
-            // onBotStartedSpeaking would normally clear them, the first
-            // tokens of the new turn have already appended to the old text.
-            // Clearing on user-started-speaking guarantees a clean slate
-            // before any new bot tokens arrive.
+            // Clear only the user caption — bot's last question stays visible
+            // while the user is formulating their answer.
             setLastUserResponse("");
-            setLastInterviewerResponse("");
-            botNewTurnRef.current = true;
             setActiveTurn("user");
           },
           onUserTranscript: (data: TranscriptData) => {
