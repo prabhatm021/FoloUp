@@ -110,7 +110,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Cloud path (no GPU needed):
-pip install fastapi uvicorn python-dotenv "pipecat-ai[silero,smallwebrtc,groq]" aiortc
+pip install fastapi uvicorn python-dotenv "pipecat-ai[silero,smallwebrtc,groq]" aiortc websockets opencv-python-headless
 cp .env.example .env   # set GROQ_API_KEY, STT_PROVIDER=groq, TTS_PROVIDER=groq
 
 # Then start it:
@@ -118,6 +118,16 @@ cp .env.example .env   # set GROQ_API_KEY, STT_PROVIDER=groq, TTS_PROVIDER=groq
 ```
 
 Voice server runs at `http://localhost:7860`.
+
+### 6. Start both servers with one command
+
+Once both are set up, you can start everything from the project root:
+
+```bash
+./start.sh
+```
+
+This launches the Next.js app and the voice server together. Press `Ctrl+C` to stop both.
 
 ---
 
