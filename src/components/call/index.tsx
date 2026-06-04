@@ -73,8 +73,10 @@ function Call({ interview }: InterviewProps) {
   const botTrackRef = useRef<MediaStreamTrack | null>(null);
   // Full transcript accumulator for saving on end
   const transcriptRef = useRef<TranscriptEntry[]>([]);
-  // When true, next onBotTranscript chunk starts a fresh caption (clears old one)
-  const botNewTurnRef = useRef(false);
+  // true while the bot's TTS is actively playing audio
+  const botSpeakingRef = useRef(false);
+  // Tokens that arrived before TTS started — flushed to display on onBotStartedSpeaking
+  const pendingBotTokensRef = useRef<string[]>([]);
   // Accumulates only the current bot turn text — used for reliable transcript saving
   const currentBotTurnRef = useRef("");
   // Tracks call start time so we can save duration on end
@@ -308,11 +310,14 @@ function Call({ interview }: InterviewProps) {
             console.log("[Pipecat] Disconnected");
             isConnectedRef.current = false;
             botTrackRef.current = null;
+            botSpeakingRef.current = false;
+            pendingBotTokensRef.current = [];
             setIsCalling(false);
             setIsEnded(true);
           },
           onBotStartedSpeaking: () => {
             setActiveTurn("agent");
+            botSpeakingRef.current = true;
             // Save previous turn to transcript
             const prevTurn = currentBotTurnRef.current.trim();
             if (prevTurn) {
@@ -322,17 +327,16 @@ function Call({ interview }: InterviewProps) {
               ];
             }
             currentBotTurnRef.current = "";
-            // Clear bot captions HERE — this is the only correct place.
-            // onBotTranscript fires as LLM generates (before TTS starts),
-            // so early tokens may already be on screen. Clearing here gives
-            // a clean start for the visible portion of the new response.
-            setLastInterviewerResponse("");
-            botNewTurnRef.current = true;
+            // Flush buffered tokens (arrived before TTS started) to display.
+            // This replaces old captions only when audio actually begins —
+            // so the previous question stays visible right up until the bot
+            // starts speaking, with no blank flash.
+            const buffered = pendingBotTokensRef.current.join(" ");
+            pendingBotTokensRef.current = [];
+            setLastInterviewerResponse(buffered);
           },
           onBotStoppedSpeaking: () => {
-            // Just update the speaking indicator — don't save here.
-            // Saving happens in the NEXT onBotStartedSpeaking (or on call end)
-            // because onBotTranscript chunks can arrive AFTER this event fires.
+            botSpeakingRef.current = false;
             setActiveTurn("user");
           },
           onUserStartedSpeaking: () => {
@@ -356,16 +360,13 @@ function Call({ interview }: InterviewProps) {
           },
           onBotTranscript: (data: BotLLMTextData) => {
             if (data.text.trim()) {
-              // Accumulate into the display caption word-by-word
-              setLastInterviewerResponse((prev) => {
-                if (botNewTurnRef.current) {
-                  // First chunk of a new bot turn — start fresh in display
-                  botNewTurnRef.current = false;
-                  return data.text;
-                }
-                return prev ? `${prev} ${data.text}` : data.text;
-              });
-              // Also accumulate into the turn ref for reliable transcript saving
+              if (botSpeakingRef.current) {
+                // TTS is active — append directly to display in sync with audio
+                setLastInterviewerResponse((prev) => prev ? `${prev} ${data.text}` : data.text);
+              } else {
+                // TTS hasn't started yet — buffer until onBotStartedSpeaking
+                pendingBotTokensRef.current.push(data.text);
+              }
               currentBotTurnRef.current = currentBotTurnRef.current
                 ? `${currentBotTurnRef.current} ${data.text}`
                 : data.text;
