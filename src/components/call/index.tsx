@@ -116,15 +116,23 @@ function Call({ interview }: InterviewProps) {
   const togglePause = useCallback(() => {
     if (!clientRef.current) return;
     const next = !isPaused;
-    // Mute/unmute the microphone — VAD+STT on server goes silent during pause
-    clientRef.current.enableMic(!next);
-    // Mute/unmute bot audio — intentionally NOT pause()/play() because pausing
-    // a MediaStream element drops Chrome's AEC reference signal, causing echo
-    // on resume and unreliable play() restart. Muting keeps the stream alive
-    // internally so AEC stays calibrated; the user just hears nothing.
-    if (botAudioRef.current) {
-      botAudioRef.current.muted = next;
-    }
+
+    // DO NOT use clientRef.current.enableMic() here.
+    // enableMic() calls Daily.js setLocalAudio() which STOPS then RESTARTS
+    // the audio capture stream on resume. That stream restart blows away
+    // Chrome's AEC calibration every time, causing the user to hear their
+    // own voice echoed back after every resume.
+    //
+    // Instead: grab the underlying MediaStreamTrack and toggle .enabled.
+    // This is a WebRTC-level soft-mute — the stream stays alive, AEC stays
+    // calibrated, the sender just sends silence RTP packets during pause.
+    // Silero VAD on the server sees silence → no STT triggered.
+    const micTrack = clientRef.current.tracks()?.local?.audio as MediaStreamTrack | undefined;
+    if (micTrack) micTrack.enabled = !next;
+
+    // Mute bot audio output while paused (keep stream alive for AEC — don't pause())
+    if (botAudioRef.current) botAudioRef.current.muted = next;
+
     setIsPaused(next);
   }, [isPaused]);
 
