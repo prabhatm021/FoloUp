@@ -37,14 +37,14 @@ source .venv/bin/activate
 
 **Path A — Cloud (no GPU needed):**
 ```bash
-pip install fastapi uvicorn python-dotenv "pipecat-ai[silero,smallwebrtc,groq]" aiortc
+pip install fastapi uvicorn python-dotenv "pipecat-ai[silero,smallwebrtc,groq]" aiortc websockets opencv-python-headless
 ```
 
 **Path B — Local (GPU required):**
 ```bash
 pip install -r requirements.txt
-# Also install CUDA runtime libs for faster-whisper:
-pip install "faster-whisper[cuda]"
+# Also install CUDA runtime libs (required for faster-whisper on GPU):
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 ```
 
 ### 3. Configure environment
