@@ -77,8 +77,8 @@ function Call({ interview }: InterviewProps) {
   const botSpeakingRef = useRef(false);
   // Tokens that arrived before TTS started — flushed to display on onBotStartedSpeaking
   const pendingBotTokensRef = useRef<string[]>([]);
-  // When paused mid-bot-speech, delay audio re-attach until bot finishes
-  const pendingAudioResumeRef = useRef(false);
+  // true when buffer was empty at TTS start — first arriving token replaces instead of appending
+  const botTurnNewRef = useRef(false);
   // Accumulates only the current bot turn text — used for reliable transcript saving
   const currentBotTurnRef = useRef("");
   // Tracks call start time so we can save duration on end
@@ -121,38 +121,34 @@ function Call({ interview }: InterviewProps) {
     if (!clientRef.current) return;
     const next = !isPaused;
 
-    // DO NOT use clientRef.current.enableMic() here.
-    // enableMic() calls Daily.js setLocalAudio() which STOPS then RESTARTS
-    // the audio capture stream on resume. That stream restart blows away
-    // Chrome's AEC calibration every time, causing the user to hear their
-    // own voice echoed back after every resume.
-    //
-    // Instead: grab the underlying MediaStreamTrack and toggle .enabled.
-    // This is a WebRTC-level soft-mute — the stream stays alive, AEC stays
-    // calibrated, the sender just sends silence RTP packets during pause.
-    // Silero VAD on the server sees silence → no STT triggered.
+    // Mic: soft-mute via track.enabled — does NOT restart Daily.js audio
+    // stream, so Chrome AEC calibration is preserved (no echo on resume).
     const micTrack = clientRef.current.tracks()?.local?.audio as MediaStreamTrack | undefined;
     if (micTrack) micTrack.enabled = !next;
 
-    if (next) {
-      // PAUSE — detach audio immediately so bot stops mid-sentence.
-      // srcObject=null discards the live stream; no audio plays at all.
-      if (botAudioRef.current) botAudioRef.current.srcObject = null;
-    } else {
-      // RESUME — only re-attach audio if the server has already finished
-      // its current TTS turn. If the bot is still speaking (server kept
-      // going while we were paused), we set a flag and re-attach in
-      // onBotStoppedSpeaking once the server is done. This prevents
-      // hearing the leftover tail of whatever the bot was saying.
-      if (!botSpeakingRef.current) {
-        const track = botTrackRef.current;
-        if (track && botAudioRef.current) {
-          botAudioRef.current.srcObject = new MediaStream([track]);
-        }
-      } else {
-        pendingAudioResumeRef.current = true;
+    // Bot audio: mute via remote track.enabled — NEVER set srcObject = null.
+    //
+    // Setting srcObject = null disconnects the audio element from the WebRTC
+    // track. While disconnected, the browser's WebRTC jitter buffer keeps
+    // accumulating incoming packets. When srcObject is reconnected those
+    // buffered packets burst out immediately → user hears the bot continuing
+    // from where it was paused ("2 words at the end", "continuing from pause").
+    //
+    // track.enabled = false keeps the audio element connected so the jitter
+    // buffer drains continuously (outputting silence). On resume the buffer
+    // is already empty — only fresh packets are heard. Clean every time.
+    const botTrack = botTrackRef.current;
+    if (botTrack) {
+      botTrack.enabled = !next; // false → silent during pause, true → audible on resume
+      // Edge case: srcObject not yet attached (very early pause) — hook it up
+      if (!next && botAudioRef.current && !botAudioRef.current.srcObject) {
+        botAudioRef.current.srcObject = new MediaStream([botTrack]);
+        botAudioRef.current.play().catch(() => {});
       }
-      // Clear stale user caption only
+    }
+
+    if (!next) {
+      // Resuming — clear stale user caption
       setLastUserResponse("");
     }
 
@@ -315,7 +311,7 @@ function Call({ interview }: InterviewProps) {
             botTrackRef.current = null;
             botSpeakingRef.current = false;
             pendingBotTokensRef.current = [];
-            pendingAudioResumeRef.current = false;
+            botTurnNewRef.current = false;
             setIsCalling(false);
             setIsEnded(true);
           },
@@ -331,27 +327,26 @@ function Call({ interview }: InterviewProps) {
               ];
             }
             currentBotTurnRef.current = "";
-            // Flush buffered tokens (arrived before TTS started) to display.
-            // This replaces old captions only when audio actually begins —
-            // so the previous question stays visible right up until the bot
-            // starts speaking, with no blank flash.
+            // Flush tokens buffered before TTS started. If the buffer has
+            // content, replace the old caption now — synced with audio start.
+            // If buffer is empty (rare: TTS started before any LLM token),
+            // set botTurnNewRef so the first arriving token replaces instead
+            // of appending — avoids blank caption flash either way.
             const buffered = pendingBotTokensRef.current.join(" ");
             pendingBotTokensRef.current = [];
-            setLastInterviewerResponse(buffered);
+            if (buffered) {
+              setLastInterviewerResponse(buffered);
+              botTurnNewRef.current = false;
+            } else {
+              botTurnNewRef.current = true;
+            }
           },
           onBotStoppedSpeaking: () => {
             botSpeakingRef.current = false;
             setActiveTurn("user");
-            // If we paused while the bot was mid-speech, re-attach audio now
-            // that the server has finished. The bot is silent so re-attaching
-            // here plays nothing — fresh audio starts on the next bot turn.
-            if (pendingAudioResumeRef.current) {
-              pendingAudioResumeRef.current = false;
-              const track = botTrackRef.current;
-              if (track && botAudioRef.current) {
-                botAudioRef.current.srcObject = new MediaStream([track]);
-              }
-            }
+            // No srcObject reconnect needed here — the audio element stays
+            // connected during pause (track.enabled = false drains the jitter
+            // buffer silently). On resume we just re-enable the track.
           },
           onUserStartedSpeaking: () => {
             // Clear only the user caption — bot's last question stays visible
@@ -375,10 +370,16 @@ function Call({ interview }: InterviewProps) {
           onBotTranscript: (data: BotLLMTextData) => {
             if (data.text.trim()) {
               if (botSpeakingRef.current) {
-                // TTS is active — append directly to display in sync with audio
-                setLastInterviewerResponse((prev) => prev ? `${prev} ${data.text}` : data.text);
+                // TTS active — show token, replacing if this is the first of the turn
+                setLastInterviewerResponse((prev) => {
+                  if (botTurnNewRef.current) {
+                    botTurnNewRef.current = false;
+                    return data.text;
+                  }
+                  return prev ? `${prev} ${data.text}` : data.text;
+                });
               } else {
-                // TTS hasn't started yet — buffer until onBotStartedSpeaking
+                // TTS not started yet — buffer until onBotStartedSpeaking
                 pendingBotTokensRef.current.push(data.text);
               }
               currentBotTurnRef.current = currentBotTurnRef.current

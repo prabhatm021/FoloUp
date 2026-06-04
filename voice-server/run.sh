@@ -9,6 +9,13 @@
 set -e
 cd "$(dirname "$0")"
 
+# ── Auto-activate local .venv if present and no venv is already active ────────
+if [ -z "$VIRTUAL_ENV" ] && [ -f ".venv/bin/activate" ]; then
+    echo "  Activating .venv..."
+    # shellcheck disable=SC1091
+    source ".venv/bin/activate"
+fi
+
 # ── CUDA library paths (auto-detected from active venv) ───────────────────────
 if [ -n "$VIRTUAL_ENV" ]; then
     NVIDIA_LIB_DIR="$VIRTUAL_ENV/lib/python$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')/site-packages/nvidia"
